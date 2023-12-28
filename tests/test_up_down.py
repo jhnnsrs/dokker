@@ -1,11 +1,15 @@
-from dokker import base_setup, HealthCheck
+from dokker import easy, local_project, HealthCheck
 import pytest
 
 
 def test_up_down():
-    with base_setup(
-        "tests/configs/docker-compose.yaml",
-        ht_checks=[HealthCheck(url="http://localhost:8456/graphql", service="mikro")],
+    with easy(
+        local_project(
+            "tests/configs/docker-compose.yaml",
+            ht_checks=[
+                HealthCheck(url="http://localhost:8456/graphql", service="mikro")
+            ],
+        )
     ):
         # do something with redis
 
@@ -16,9 +20,13 @@ def test_up_down():
 
 @pytest.mark.asyncio
 async def atest_up_down():
-    async with base_setup(
-        "tests/configs/docker-compose.yaml",
-        ht_checks=[HealthCheck(url="http://localhost:8456/graphql", service="mikro")],
+    async with easy(
+        local_project(
+            "tests/configs/docker-compose.yaml",
+            ht_checks=[
+                HealthCheck(url="http://localhost:8456/graphql", service="mikro")
+            ],
+        )
     ):
         # do something with redis
 
