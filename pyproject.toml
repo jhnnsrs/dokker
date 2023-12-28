@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "dokker"
+version = "0.1.0"
+description = ""
+authors = ["jhnnsrs <jhnnsrs@gmail.com>"]
+readme = "README.md"
+packages = [{ include = "dokker" }]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+python-on-whales = "^0.68.0"
+httpx = "^0.26.0"
+rich-click = "^1.7.2"
+koil = "^0.3.5"
+pydantic = "<=2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+pytest-asyncio = "^0.23.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
