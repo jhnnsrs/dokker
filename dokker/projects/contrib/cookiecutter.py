@@ -3,6 +3,7 @@ from dokker.project import Project
 from pydantic import BaseModel, Field
 import os
 from typing import List, Optional, Dict, Protocol, runtime_checkable, Any
+from dokker.cli import CLI
 
 
 class CookieCutterProject(BaseModel):
@@ -12,7 +13,7 @@ class CookieCutterProject(BaseModel):
     extra_context: dict = Field(default_factory=lambda: {})
     overwrite_if_exists: bool = False
 
-    async def aget_client_params(self) -> Dict[str, Any]:
+    async def ainititialize(self) -> CLI:
         os.makedirs(self.base_dir, exist_ok=True)
 
         project_dir = cookiecutter(
@@ -29,9 +30,7 @@ class CookieCutterProject(BaseModel):
                 "No docker-compose.yml found in the template. It appears that the template is not a valid dokker template."
             )
 
-        return {
-            "compose_files": [compose_file],
-        }
+        return CLI(compose_files=[compose_file])
 
     async def abefore_pull(self) -> None:
         """A setup method for the project.

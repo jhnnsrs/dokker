@@ -1,4 +1,4 @@
-from .setup import Setup, HealthCheck, LogForward, PrintLogger, Logger, Project
+from .deployment import Deployment, HealthCheck, Logger
 from .builders import (
     local_project,
     cookiecutter_project,
@@ -6,13 +6,16 @@ from .builders import (
     copy_path_project,
     local,
 )
+from .project import Project
+from .projects.local import LocalProject
 
 __all__ = [
     "local",
-    "Setup",
+    "Deployment",
     "HealthCheck",
+    "LocalProject",
     "LogForward",
-    "PrintLogger",
+    "Project" "PrintLogger",
     "Logger",
     "base_setup",
     "Project",

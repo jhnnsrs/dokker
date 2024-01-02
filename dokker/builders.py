@@ -1,4 +1,4 @@
-from .setup import Setup, HealthCheck
+from .deployment import Deployment, HealthCheck
 from .project import Project
 import os
 from typing import List, Optional, Union, TYPE_CHECKING
@@ -18,6 +18,17 @@ def local_project(
 
 
 def cookiecutter_project(repo_url: str) -> "CookieCutterProject":
+    """Generates a CookieCutterProject.
+
+    This is a helper function to generate a CookieCutterProject,
+    which will be expanded to a project in the .dokker directory.
+
+    Args:
+        repo_url (str): The url to the cookiecutter template.
+
+    Returns:
+        CookieCutterProject: The generated project.
+    """
     from dokker.projects.contrib.cookiecutter import CookieCutterProject
 
     return CookieCutterProject(repo_url=repo_url, project_name="test")
@@ -29,11 +40,13 @@ def copy_path_project(
     return CopyPathProject(project_path=project_path, project_name=project_name)
 
 
-def easy(project: Project, health_checks: List[HealthCheck] = None) -> Setup:
-    return Setup(project=project, health_checks=health_checks)
+def easy(project: Project, health_checks: List[HealthCheck] = None) -> Deployment:
+    return Deployment(project=project, health_checks=health_checks)
 
 
-def local(docker_compose_file: str, health_checks: List[HealthCheck] = None) -> Setup:
+def local(
+    docker_compose_file: str, health_checks: List[HealthCheck] = None
+) -> Deployment:
     project = LocalProject(
         compose_files=[docker_compose_file],
     )

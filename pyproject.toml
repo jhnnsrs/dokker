@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dokker"
-version = "0.1.5"
+version = "0.1.7"
 description = ""
 authors = ["jhnnsrs <jhnnsrs@gmail.com>"]
 readme = "README.md"
@@ -8,7 +8,6 @@ packages = [{ include = "dokker" }]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<4.0"
-python-on-whales = "^0.68.0"
 httpx = "^0.26.0"
 koil = "^0.3.5"
 pydantic = "<=2"

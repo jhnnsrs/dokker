@@ -6,7 +6,7 @@ def test_up_down():
     with easy(
         local_project(
             "tests/configs/docker-compose.yaml",
-            ht_checks=[
+            health_checks=[
                 HealthCheck(url="http://localhost:8456/graphql", service="mikro")
             ],
         )
@@ -23,7 +23,7 @@ async def atest_up_down():
     async with easy(
         local_project(
             "tests/configs/docker-compose.yaml",
-            ht_checks=[
+            health_checks=[
                 HealthCheck(url="http://localhost:8456/graphql", service="mikro")
             ],
         )
