@@ -142,7 +142,6 @@ class Deployment(KoiledModel):
     async def acheck_healthz(self, check: HealthCheck, retry: int = 0):
         try:
             await check.acheck()
-           
         except Exception as e:
             if retry < check.max_retries:
                 await asyncio.sleep(check.timeout)
@@ -153,11 +152,14 @@ class Deployment(KoiledModel):
                         f"Health check failed after {check.max_retries} retries. Logs are disabled."
                     ) from e
 
-                logs = await self.afetch_service_logs(check.service)
+                logs = []
+                
+                async for std, i in  self._cli.astream_docker_logs(check.service):
+                    logs.append(i)
 
                 raise HealthError(
                     f"Health check failed after {check.max_retries} retries. Logs:\n"
-                    + "".join(logs)
+                    + "\n".join(logs)
                 ) from e
 
     async def await_for_healthz(
