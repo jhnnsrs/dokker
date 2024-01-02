@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
 from typing import Any, Coroutine, Optional, List, Protocol, runtime_checkable
-from httpx import AsyncClient
 import time
 from koil.composition import KoiledModel
 import asyncio
@@ -16,7 +15,10 @@ import traceback
 from dokker.loggers.print import PrintLogger
 from dokker.loggers.void import VoidLogger
 from .log_watcher import LogWatcher
-
+import aiohttp
+import certifi
+from ssl import SSLContext
+import ssl
 
 ValidPath = Union[str, Path]
 
@@ -31,7 +33,26 @@ class HealthCheck(BaseModel):
     max_retries: int = 3
     timeout: int = 10
     error_with_logs: bool = True
+    headers: Optional[dict] = Field(default_factory=lambda: {"Content-Type": "application/json"})
+    ssl_context: SSLContext = Field(
+        default_factory=lambda: ssl.create_default_context(cafile=certifi.where()),
+        description="SSL Context to use for the request",
+    )
 
+    async def acheck(self):
+        async with aiohttp.ClientSession(
+                headers=self.headers,
+                connector=aiohttp.TCPConnector(ssl=self.ssl_context),
+            ) as session:
+                # get json from endpoint
+                async with session.get(self.chec.url) as resp:
+                    assert resp.status == 200
+                    return await resp.text()
+                
+    class Config:
+        arbitrary_types_allowed = True
+        underscore_attrs_are_private = True
+                
 
 @runtime_checkable
 class Logger(Protocol):
@@ -75,6 +96,7 @@ class Deployment(KoiledModel):
     _spec: ComposeSpec
     _cli: CLI
     _threadpool: Optional[ThreadPoolExecutor] = None
+    
 
     @property
     def spec(self) -> ComposeSpec:
@@ -116,29 +138,11 @@ class Deployment(KoiledModel):
         self.health_checks.append(check)
         return check
 
-    async def arequest(
-        self, service_name: str, private_port: int = None, path: str = "/"
-    ):
-        async with AsyncClient() as client:
-            try:
-                response = await client.get(f"http://127.0.0.1:{private_port}{path}")
-                assert response.status_code == 200
-                return response
-            except Exception as e:
-                raise AssertionError(f"Health check failed: {e}")
-
-    def request(self, service_name: str, private_port: int = None, path: str = ""):
-        return unkoil(self.arequest, service_name, private_port=private_port, path=path)
 
     async def acheck_healthz(self, check: HealthCheck, retry: int = 0):
         try:
-            async with AsyncClient() as client:
-                try:
-                    response = await client.get(check.url)
-                    assert response.status_code == 200
-                    return response
-                except Exception as e:
-                    raise AssertionError(f"Health check failed: {e}")
+            await check.acheck()
+           
         except Exception as e:
             if retry < check.max_retries:
                 await asyncio.sleep(check.timeout)

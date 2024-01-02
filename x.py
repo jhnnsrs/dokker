@@ -1,5 +1,4 @@
 from dokker import local, HealthCheck
-import requests
 from rich.traceback import install
 
 install(show_locals=False)
