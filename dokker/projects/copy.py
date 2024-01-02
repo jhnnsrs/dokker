@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 import os
 from typing import List, Optional, Dict, Protocol, runtime_checkable, Any
 import shutil
+from dokker.cli import CLI
 
 
 class CopyPathProject(BaseModel):
@@ -12,7 +13,7 @@ class CopyPathProject(BaseModel):
     base_dir: str = Field(default_factory=lambda: os.path.join(os.getcwd(), ".dokker"))
     overwrite: bool = False
 
-    async def aget_client_params(self) -> Dict[str, Any]:
+    async def ainititialize(self) -> CLI:
         os.makedirs(self.base_dir, exist_ok=True)
 
         if self.project_name is None:
@@ -32,9 +33,7 @@ class CopyPathProject(BaseModel):
                 "No docker-compose.yml found in the template. It appears that the template is not a valid dokker template."
             )
 
-        return {
-            "compose_files": [compose_file],
-        }
+        return CLI(compose_files=[compose_file])
 
     async def abefore_pull(self) -> None:
         """A setup method for the project.

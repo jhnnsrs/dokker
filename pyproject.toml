@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dokker"
-version = "0.1.5"
+version = "0.1.10"
 description = ""
 authors = ["jhnnsrs <jhnnsrs@gmail.com>"]
 readme = "README.md"
@@ -8,11 +8,11 @@ packages = [{ include = "dokker" }]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<4.0"
-python-on-whales = "^0.68.0"
-httpx = "^0.26.0"
 koil = "^0.3.5"
 pydantic = "<=2"
 cookiecutter = {version = "^2.5.0", optional = true}
+aiohttp = "^3.9.1"
+certifi = "^2023.11.17"
 
 [tool.poetry.extras]
 cookiecutter = ["cookiecutter"]
@@ -20,8 +20,65 @@ cookiecutter = ["cookiecutter"]
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.3"
 pytest-asyncio = "^0.23.2"
+mypy = "^1.8.0"
+cookiecutter = "^2.5.0"
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+exclude = ["venv/", "tests/", "examples/"]
+ignore_missing_imports = true
+
+[tool.ruff]
+extend-select = ["ANN", "D1"]
+extend-ignore = ["ANN101", "ANN002", "ANN003", "D100", "ANN401"]
+
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "tests",
+    "examples",
+]
+
+# Same as Black.
+line-length = 300
+
+
+[[tool.pydoc-markdown.loaders]]
+type = "python"
+search_path = ["rath"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+qt_api = "pyqt5"
+markers = [
+    "integration: marks tests that require a running server",
+    "qt: marks tests that require a running qt application",
+    "public: marks tests that require a public api",
+]
+
+[tool.pydoc-markdown.renderer]
+type = "docusaurus"
+docs_base_path = "website/docs"
