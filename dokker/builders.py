@@ -10,11 +10,9 @@ if TYPE_CHECKING:
 
 
 def local_project(
-    docker_compose_file: str, health_checks: List[HealthCheck] = None
-) -> LocalProject:
-    return LocalProject(
-        compose_files=[docker_compose_file], health_checks=health_checks
-    )
+    docker_compose_file: str,
+) -> "LocalProject":
+    return LocalProject(compose_files=[docker_compose_file])
 
 
 def cookiecutter_project(repo_url: str) -> "CookieCutterProject":
@@ -41,13 +39,42 @@ def copy_path_project(
 
 
 def easy(project: Project, health_checks: List[HealthCheck] = None) -> Deployment:
+    if health_checks is None:
+        health_checks = []
     return Deployment(project=project, health_checks=health_checks)
 
 
 def local(
     docker_compose_file: str, health_checks: List[HealthCheck] = None
 ) -> Deployment:
+    if health_checks is None:
+        health_checks = []
     project = LocalProject(
         compose_files=[docker_compose_file],
     )
     return easy(project, health_checks=health_checks)
+
+
+def monitoring(
+    docker_compose_file: str, health_checks: List[HealthCheck] = None
+) -> Deployment:
+    """Creates a deployment that does not pull on enter, down on exit, or stop on exit.
+
+    This is useful for monitoring a deployment.
+
+    """
+    if health_checks is None:
+        health_checks = []
+    project = LocalProject(
+        compose_files=[docker_compose_file],
+    )
+    deployment = Deployment(
+        project=project,
+        health_checks=health_checks,
+    )
+
+    deployment.pull_on_enter = False
+    deployment.down_on_exit = False
+    deployment.stop_on_exit = False
+
+    return deployment

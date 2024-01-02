@@ -58,6 +58,7 @@ class Deployment(KoiledModel):
     services: Optional[List[str]] = None
 
     health_checks: List[HealthCheck] = Field(default_factory=list)
+    inspect_on_enter: bool = True
     pull_on_enter: bool = False
     up_on_enter: bool = True
     health_on_enter: bool = False
@@ -79,13 +80,20 @@ class Deployment(KoiledModel):
     def spec(self) -> ComposeSpec:
         if self._spec is None:
             raise Exception(
-                "Setup not initialized. Call await setup.ainitialize() first."
+                "Deployment not inspected. Call await deployment.ainspect() first."
             )
         return self._spec
 
-    async def ainititialize(self) -> None:
+    async def ainititialize(self) -> "CLI":
         self._cli = await self.project.ainititialize()
-        self._spec = await self.project.ainit_spec()
+        return self._cli
+
+    async def ainspect(self) -> ComposeSpec:
+        if self._cli is None:
+            await self.ainititialize()
+
+        self._spec = await self._cli.ainspect_config()
+        return self._spec
 
     def add_health_check(
         self,
@@ -148,17 +156,24 @@ class Deployment(KoiledModel):
                     + "".join(logs)
                 ) from e
 
-    async def await_for_healthz(self, timeout: int = 3, retry: int = 0):
+    async def await_for_healthz(
+        self, timeout: int = 3, retry: int = 0, services: List[str] = None
+    ):
+        if services is None:
+            services = [
+                check.service for check in self.health_checks
+            ]  # we check all services
+
         return await asyncio.gather(
-            *[self.acheck_healthz(check) for check in self.health_checks]
+            *[
+                self.acheck_healthz(check)
+                for check in self.health_checks
+                if check.service in services
+            ]
         )
 
     def logswatcher(self, service_name: str, **kwargs):
         return LogWatcher(cli_bearer=self, services=[service_name], tail=1, **kwargs)
-
-    async def ainititialize(self):
-        self._cli = await self.project.ainititialize()
-        self._spec = await self._cli.ainspect_config()
 
     async def aup(self):
         logs = []
@@ -167,6 +182,29 @@ class Deployment(KoiledModel):
             self.logger.on_stop(log)
 
         return logs
+
+    async def arestart(
+        self, services: List[str] = None, await_health=True, await_health_timeout=3
+    ):
+        logs = []
+        async for type, log in self._cli.astream_restart(services=services):
+            logs.append(log)
+
+        if await_health:
+            await asyncio.sleep(await_health_timeout)
+            await self.await_for_healthz(services=services)
+
+        return logs
+
+    def restart(
+        self, services: List[str] = None, await_health=True, await_health_timeout=3
+    ):
+        return unkoil(
+            self.arestart,
+            services=services,
+            await_health=await_health,
+            await_health_timeout=await_health_timeout,
+        )
 
     async def apull(self):
         logs = []
@@ -202,6 +240,10 @@ class Deployment(KoiledModel):
         self._threadpool = ThreadPoolExecutor(max_workers=self.threadpool_workers)
 
         await self.ainititialize()
+
+        if self.inspect_on_enter:
+            await self.ainspect()
+
         if self.pull_on_enter:
             await self.project.abefore_pull()
             await self.apull()

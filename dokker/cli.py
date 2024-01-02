@@ -1,5 +1,5 @@
 from typing import Optional, List, Union, Protocol, runtime_checkable
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from pydantic.types import DirectoryPath, FilePath
 from koil.composition import KoiledModel
 from pathlib import Path
@@ -8,6 +8,7 @@ from datetime import timedelta
 from typing import Union, Callable, Dict, Literal
 from .compose_spec import ComposeSpec
 import json
+import os
 
 ValidPath = Union[str, Path]
 
@@ -47,12 +48,23 @@ class CLI(KoiledModel):
     compose_compatibility: Optional[bool] = None
     client_call: List[str] = Field(default_factory=lambda: ["docker", "compose"])
 
+    @validator("compose_files", each_item=True)
+    def _validate_compose_files(cls, v):
+        if os.path.exists(v):
+            return v
+        else:
+            raise ValueError(f"Compose File {v} does not exist.")
+
     @property
     def docker_cmd(self) -> list[str]:
         """Builds the docker command. This is the base prepended
         command that will be run by the CLI.
         """
         result = self.client_call
+
+        if self.compose_files:
+            for compose_file in self.compose_files:
+                result += ["--file", compose_file]
 
         if self.config is not None:
             result += ["--config", self.config]
@@ -239,6 +251,20 @@ class CLI(KoiledModel):
         async for line in self.astream_command(full_cmd):
             yield line
 
+    async def astream_restart(
+        self,
+        services: Union[str, List[str], None] = None,
+    ):
+        full_cmd = self.docker_cmd + ["restart"]
+
+        if services:
+            if isinstance(services, str):
+                services = [services]
+            full_cmd += services
+
+        async for line in self.astream_command(full_cmd):
+            yield line
+
     async def astream_up(
         self,
         services: Union[List[str], str, None] = None,
@@ -344,4 +370,9 @@ class CLI(KoiledModel):
 
         result = "\n".join(lines)
 
-        return ComposeSpec(**json.loads(result))
+        try:
+            return ComposeSpec(**json.loads(result))
+        except Exception as e:
+            raise Exception(
+                f"Could not inspect! Error while parsing the json: {result}"
+            ) from e

@@ -24,16 +24,16 @@ watcher = setup.logswatcher(
 
 # start the project (), will block until all health checks are successful
 with setup:
-    print(setup.spec)
+    print(setup.spec.services.get("echo_service").ports)
     # interact with the project
 
-    try:
-        with watcher:
-            # interact with the project
-            print(requests.get("http://localhost:5678"))
-            raise TException("Something went wrong")
-    except TException:
-        print("Exception caught")
-        raise
+    with watcher:
+        # interact with the project
+        print(setup.restart("echo_service"))
+
+    with watcher:
+        setup.restart("echo_service")
+
+    print(watcher.collected_logs)
 
     # interact with the project
