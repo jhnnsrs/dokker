@@ -1,7 +1,4 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Protocol, runtime_checkable, Any
-from pathlib import Path
-from .compose_spec import ComposeSpec
+from typing import Protocol, runtime_checkable
 from .cli import CLI
 
 
@@ -21,7 +18,33 @@ class Project(Protocol):
     """
 
     async def ainititialize(self) -> CLI:
+        """A setup method for the project.
+
+        Returns
+        -------
+        CLI
+            The CLI to use for the project.
+        """
         ...
+
+
+    async def atear_down(self, cli: CLI) -> None:
+        """Tear down the project.
+
+        A project can implement this method to tear down the project
+        when the project is torn down. This can be used to remove
+        temporary files, or to remove the project from the .dokker
+        directory.
+
+        Parameters
+        ----------
+        cli : CLI
+            The CLI that was used to run the project.
+
+        """
+        ...
+
+
 
     async def abefore_pull(self) -> None:
         """A setup method for the project.

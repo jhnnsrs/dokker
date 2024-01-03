@@ -1,22 +1,36 @@
-from typing import Optional, List, Union, Protocol, runtime_checkable
-from pydantic import BaseModel, Field, validator
-from pydantic.types import DirectoryPath, FilePath
+from typing import Optional, List, Union, Protocol, runtime_checkable,  Dict, Literal, AsyncIterator, Tuple
+from pydantic import Field, validator
 from koil.composition import KoiledModel
 from pathlib import Path
 import asyncio
 from datetime import timedelta
-from typing import Union, Callable, Dict, Literal
 from .compose_spec import ComposeSpec
 import json
 import os
+from dokker.errors import DokkerError
+
 
 ValidPath = Union[str, Path]
 
 
+class CLIError(DokkerError):
+    """ An error that is raised when the CLI fails to run."""
+    pass
+
+
 @runtime_checkable
 class CLIBearer(Protocol):
+    """A CLIBearer is an object that has a CLI.
+
+    This is a protocol that can be used to type hint objects that have a CLI.
+    """
+
     async def aget_cli(self) -> "CLI":
+        """Returns the CLI for the object."""
         ...
+
+
+LogStream = AsyncIterator[Tuple[str, str]]
 
 
 class CLI(KoiledModel):
@@ -49,7 +63,7 @@ class CLI(KoiledModel):
     client_call: List[str] = Field(default_factory=lambda: ["docker", "compose"])
 
     @validator("compose_files", each_item=True)
-    def _validate_compose_files(cls, v):
+    def _validate_compose_files(cls, v: str) -> str:
         if os.path.exists(v):
             return v
         else:
@@ -64,10 +78,10 @@ class CLI(KoiledModel):
 
         if self.compose_files:
             for compose_file in self.compose_files:
-                result += ["--file", compose_file]
+                result += ["--file", str(compose_file)]
 
         if self.config is not None:
-            result += ["--config", self.config]
+            result += ["--config", str(self.config)]
 
         if self.context is not None:
             result += ["--context", self.context]
@@ -85,29 +99,19 @@ class CLI(KoiledModel):
             result.append("--tls")
 
         if self.tlscacert is not None:
-            result += ["--tlscacert", self.tlscacert]
+            result += ["--tlscacert", str(self.tlscacert)]
 
         if self.tlscert is not None:
-            result += ["--tlscert", self.tlscert]
+            result += ["--tlscert", str(self.tlscert)]
 
         if self.tlskey is not None:
-            result += ["--tlskey", self.tlskey]
+            result += ["--tlskey", str(self.tlskey)]
 
         if self.tlsverify:
             result.append("--tlsverify")
 
         return result
 
-    async def arun(command: str):
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        stdout, stderr = await proc.communicate()
-
-        return stdout.decode("utf-8"), stderr.decode("utf-8")
 
     async def astream_docker_logs(
         self,
@@ -118,7 +122,7 @@ class CLI(KoiledModel):
         since: Optional[str] = None,
         until: Optional[str] = None,
         services: Union[str, List[str]] = [],
-    ):
+    ) -> LogStream:
         full_cmd = self.docker_cmd + ["logs", "--no-color"]
         if tail is not None:
             full_cmd += ["--tail", tail]
@@ -146,13 +150,13 @@ class CLI(KoiledModel):
         stream: asyncio.StreamReader,
         queue: asyncio.Queue,
         name: str,
-    ):
+    ) -> None:
         async for line in stream:
             await queue.put((name, line.decode("utf-8").strip()))
 
         await queue.put(None)
 
-    async def astream_command(self, command: List[str]):
+    async def astream_command(self, command: List[str]) -> LogStream:
         # Create the subprocess using asyncio's subprocess
 
         full_cmd = " ".join(map(str, command))
@@ -163,7 +167,10 @@ class CLI(KoiledModel):
             stderr=asyncio.subprocess.PIPE,
         )
 
-        queue = asyncio.Queue()
+        if proc.stdout is None or proc.stderr is None:
+            raise CLIError("Could not create the subprocess.")
+
+        queue = asyncio.Queue() # type: asyncio.Queue[tuple[str, str]] # cannot use type annotation because of python 3.8
         # Create and start tasks for reading each stream
 
         try:
@@ -206,6 +213,29 @@ class CLI(KoiledModel):
 
         except Exception as e:
             raise e
+        
+
+    async def astream_down(
+        self,
+        remove_orphans: bool = False,
+        remove_images: Optional[str] = None,
+        timeout: Optional[int] = None,
+        volumes: bool = False,
+    ) -> LogStream:
+        
+        full_cmd = self.docker_cmd + ["down"]
+        if remove_orphans:
+            full_cmd.append("--remove-orphans")
+        if remove_images is not None:
+            full_cmd.append(f"--rmi {remove_images}")
+        if timeout is not None:
+            full_cmd.append(f"--timeout {timeout}")
+        if volumes:
+            full_cmd.append("--volumes")
+        
+        async for line in self.astream_command(full_cmd):
+            yield line
+    
 
     async def astream_pull(
         self,
@@ -213,7 +243,7 @@ class CLI(KoiledModel):
         ignore_pull_failures: bool = False,
         include_deps: bool = False,
         quiet: bool = False,
-    ):
+    ) -> LogStream:
         full_cmd = self.docker_cmd + ["pull"]
         if ignore_pull_failures:
             full_cmd.append("--ignore-pull-failures")
@@ -235,7 +265,7 @@ class CLI(KoiledModel):
         services: Union[str, List[str], None] = None,
         timeout: Union[int, timedelta, None] = None,
         stream_logs: bool = False,
-    ):
+    ) -> LogStream:
         full_cmd = self.docker_cmd + ["stop"]
         if timeout is not None:
             if isinstance(timeout, timedelta):
@@ -254,7 +284,7 @@ class CLI(KoiledModel):
     async def astream_restart(
         self,
         services: Union[str, List[str], None] = None,
-    ):
+    ) -> LogStream:
         full_cmd = self.docker_cmd + ["restart"]
 
         if services:
@@ -286,7 +316,11 @@ class CLI(KoiledModel):
         no_attach_services: Union[List[str], str, None] = None,
         pull: Literal["always", "missing", "never", None] = None,
         stream_logs: bool = False,
-    ):
+    ) -> LogStream:
+            
+
+
+
         if quiet and stream_logs:
             raise ValueError(
                 "It's not possible to have stream_logs=True and quiet=True at the same time. "
@@ -340,26 +374,17 @@ class CLI(KoiledModel):
             yield line
 
     async def ainspect_config(self) -> ComposeSpec:
-        """Returns the configuration of the compose stack for further inspection.
+        """Inspect the config of the docker-compose project.
 
-        For example
-        ```python
-        from python_on_whales import docker
-        project_config = docker.compose.config()
-        print(project_config.services["my_first_service"].image)
-        "redis"
-        ```
+        Returns
+        -------
+        ComposeSpec
+            The compose spec of the project.
 
-        Parameters:
-            return_json: If `False`, a `ComposeConfig` object will be returned, and you
-                'll be able to take advantage of your IDE autocompletion. If you want the
-                full json output, you may use `return_json`. In this case, you'll get
-                lists and dicts corresponding to the json response, unmodified.
-                It may be useful if you just want to print the config or want to access
-                a field that was not in the `ComposeConfig` class.
-
-        # Returns
-            A `ComposeConfig` object if `return_json` is `False`, and a `dict` otherwise.
+        Raises
+        ------
+        CLIError
+            An error that is raised when the CLI fails to run.
         """
         full_cmd = self.docker_cmd + ["config", "--format", "json"]
 
@@ -373,6 +398,6 @@ class CLI(KoiledModel):
         try:
             return ComposeSpec(**json.loads(result))
         except Exception as e:
-            raise Exception(
+            raise CLIError(
                 f"Could not inspect! Error while parsing the json: {result}"
             ) from e

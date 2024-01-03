@@ -1,26 +1,29 @@
+""" Dokker
+
+Dokker is a tool for building and managing docker-compose projects.
+It is designed to tightly integrate in python projects and provide
+sensible defaults for common docker-compose workflows.
+"""
+
+
 from .deployment import Deployment, HealthCheck, Logger
 from .builders import (
-    local_project,
-    cookiecutter_project,
-    easy,
-    copy_path_project,
+    mirror,
+    testing,
+    monitoring,
     local,
 )
 from .project import Project
 from .projects.local import LocalProject
 
 __all__ = [
-    "local",
     "Deployment",
     "HealthCheck",
-    "LocalProject",
-    "LogForward",
-    "Project" "PrintLogger",
     "Logger",
-    "base_setup",
+    "mirror",
+    "testing",
+    "monitoring",
+    "local",
     "Project",
-    "local_project",
-    "cookiecutter_project",
-    "copy_path_project",
-    "easy",
+    "LocalProject",
 ]

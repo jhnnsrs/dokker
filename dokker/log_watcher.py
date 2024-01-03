@@ -1,37 +1,37 @@
 from koil.composition import KoiledModel
 import asyncio
 from typing import Optional, List, Callable, Union
-from dokker.cli import CLI, CLIBearer
+from dokker.cli import CLIBearer
 
 
 try:
     from rich import panel
 
-    def format_log_watcher_message(watcher: "LogWatcher", exc_val, rich=True):
+    def format_log_watcher_message(watcher: "LogWatcher", exc_val, rich=True) -> str:
         extra_info = map(
             lambda x: x[1] if x[0] == "STDERR" or watcher.capture_stdout else "",
             watcher.collected_logs,
         )
         # Ensure compatibility with different exception types
 
-        extra_info = "\n".join(extra_info)
+        extra_info_str = "\n".join(extra_info)
 
         if not rich:
-            return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info}"
+            return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info_str}"
         else:
-            return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info}"
+            return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info_str}"
 
 except ImportError:
 
-    def format_log_watcher_message(watcher: "LogWatcher", exc_val, extra_info):
+    def format_log_watcher_message(watcher: "LogWatcher", exc_val, rich=True) -> str:
         extra_info = map(
             lambda x: x[1] if x[0] == "STDERR" or watcher.capture_stdout else "",
             watcher.collected_logs,
         )
         # Ensure compatibility with different exception types
 
-        extra_info = "\n".join(extra_info)
-        return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info}"
+        extra_info_str = "\n".join(extra_info)
+        return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info_str}"
 
 
 class LogWatcher(KoiledModel):
@@ -43,7 +43,7 @@ class LogWatcher(KoiledModel):
     since: Optional[str] = None
     until: Optional[str] = None
     stream: bool = True
-    services: Union[str, List[str]] = ([],)
+    services: Union[str, List[str]] = []
     wait_for_first_log: bool = True
     wait_for_logs: bool = False
     wait_for_logs_timeout: int = 10
@@ -80,10 +80,11 @@ class LogWatcher(KoiledModel):
             self.collected_logs.append(log)
 
     def on_watch_task_done(self, task: asyncio.Task):
+        exception = task.exception()
         if task.cancelled():
             return
-        if task.exception():
-            raise task.exception()
+        if exception:
+            raise exception
         if task.done():
             return
 

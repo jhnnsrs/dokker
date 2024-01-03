@@ -1,24 +1,21 @@
 from pydantic import BaseModel, Field
-from typing import Any, Coroutine, Optional, List, Protocol, runtime_checkable
-import time
+from typing import Optional, List, Protocol, runtime_checkable
 from koil.composition import KoiledModel
 import asyncio
-import logging
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 from dokker.compose_spec import ComposeSpec
 from dokker.project import Project
-from typing import Union, Callable
+from typing import Union
 from koil import unkoil
 from dokker.cli import CLI
-import traceback
-from dokker.loggers.print import PrintLogger
 from dokker.loggers.void import VoidLogger
 from .log_watcher import LogWatcher
 import aiohttp
 import certifi
 from ssl import SSLContext
 import ssl
+from dokker.errors import NotInitializedError, NotInspectedError
+
 
 ValidPath = Union[str, Path]
 
@@ -45,7 +42,7 @@ class HealthCheck(BaseModel):
                 connector=aiohttp.TCPConnector(ssl=self.ssl_context),
             ) as session:
                 # get json from endpoint
-                async with session.get(self.chec.url) as resp:
+                async with session.get(self.url) as resp:
                     assert resp.status == 200
                     return await resp.text()
                 
@@ -72,6 +69,8 @@ class Logger(Protocol):
         ...
 
 
+
+
 class Deployment(KoiledModel):
     """A deployment is a set of services that are deployed together."""
 
@@ -79,67 +78,139 @@ class Deployment(KoiledModel):
     services: Optional[List[str]] = None
 
     health_checks: List[HealthCheck] = Field(default_factory=list)
+    initialize_on_enter: bool = True
     inspect_on_enter: bool = True
     pull_on_enter: bool = False
     up_on_enter: bool = True
     health_on_enter: bool = False
     down_on_exit: bool = False
     stop_on_exit: bool = True
+    tear_down_on_exit: bool = False
     threadpool_workers: int = 3
 
     pull_logs: Optional[List[str]] = None
     up_logs: Optional[List[str]] = None
     stop_logs: Optional[List[str]] = None
 
+    auto_initialize: bool = True
+
     logger: Logger = Field(default_factory=VoidLogger)
 
     _spec: ComposeSpec
     _cli: CLI
-    _threadpool: Optional[ThreadPoolExecutor] = None
     
 
     @property
     def spec(self) -> ComposeSpec:
+        """A property that returns the compose spec of the deployment.
+
+        THis compose spec can be used to retrieve information about the deployment.
+        by inspecting the containers, networks, volumes, etc.
+
+        In the future, this spec will be used to
+        retrieve information about the deployment.
+
+        Returns
+        -------
+        ComposeSpec
+            The compose spec.
+
+        Raises
+        ------
+        NotInspectedError
+            If the deployment has not been inspected.
+        """
         if self._spec is None:
-            raise Exception(
+            raise NotInspectedError(
                 "Deployment not inspected. Call await deployment.ainspect() first."
             )
         return self._spec
 
-    async def ainititialize(self) -> "CLI":
+    async def ainitialize(self) -> "CLI":
+        """Initialize the deployment.
+        
+        Will initialize the deployment through its project and return the CLI object.
+        This method is called automatically when using the deployment as a context manager.
+
+        Returns
+        -------
+        CLI
+           The CLI object.
+        """
         self._cli = await self.project.ainititialize()
         return self._cli
 
     async def ainspect(self) -> ComposeSpec:
+        """Inspect the deployment.
+
+        Will inspect the deployment through its project and return the compose spec, which
+        can be used to retrieve information about the deployment.
+        This method is called automatically when using the deployment as a context manager and
+        if inspect_on_enter is True.
+        Returns
+        -------
+        ComposeSpec
+            The compose spec.
+
+        Raises
+        ------
+        NotInitializedError
+            If the deployment has not been initialized.
+        """
         if self._cli is None:
-            await self.ainititialize()
+            if self.auto_initialize:
+                await self.ainititialize()
+            else:
+                raise NotInitializedError(
+                    "Deployment not initialized and auto_initialize is False. Call await deployment.ainitialize() first."
+                )
 
         self._spec = await self._cli.ainspect_config()
         return self._spec
 
     def add_health_check(
         self,
-        url: str = None,
-        service: str = None,
+        url: str,
+        service: str,
         max_retries: int = 3,
         timeout: int = 10,
         error_with_logs: bool = True,
-        check: HealthCheck = None,
     ) -> "HealthCheck":
-        if check is None:
-            check = HealthCheck(
-                url=url,
-                service=service,
-                max_retries=max_retries,
-                timeout=timeout,
-                error_with_logs=error_with_logs,
-            )
+        """Add a health check to the deployment.
+
+        Parameters
+        ----------
+        url : str
+            The url to check.
+        service : str
+            The service this health check is for.
+        max_retries : int, optional
+            The maximum retries before the healtch checks fails, by default 3
+        timeout : int, optional
+            The timeout between retries, by default 10
+        error_with_logs : bool, optional
+            Should we error with the logs of the service (will inspect container logs of the service), by default True
+
+        Returns
+        -------
+        HealthCheck
+            The health check object.
+        """
+        
+        check = HealthCheck(
+            url=url,
+            service=service,
+            max_retries=max_retries,
+            timeout=timeout,
+            error_with_logs=error_with_logs,
+        )
 
         self.health_checks.append(check)
         return check
 
 
     async def acheck_healthz(self, check: HealthCheck, retry: int = 0):
+
         try:
             await check.acheck()
         except Exception as e:
@@ -163,7 +234,7 @@ class Deployment(KoiledModel):
                 ) from e
 
     async def await_for_healthz(
-        self, timeout: int = 3, retry: int = 0, services: List[str] = None
+        self, timeout: int = 3, retry: int = 0, services: Optional[List[str]] = None
     ):
         if services is None:
             services = [
@@ -178,20 +249,96 @@ class Deployment(KoiledModel):
             ]
         )
 
-    def logswatcher(self, service_name: str, **kwargs):
-        return LogWatcher(cli_bearer=self, services=[service_name], tail=1, **kwargs)
+    def logswatcher(self, service_names: Union[List[str], str], **kwargs):
+        """Get a logswatcher for a service.
 
-    async def aup(self):
+        A logswatcher is an object that can be used to watch the logs of a service, as
+        they are being streamed. It is an (async) context manager that should be used
+        to enclose any code that needs to watch the logs of a service.
+
+        ```python
+         with deployment.logswatcher("service"):
+            # do something with service logs
+            print(requests.get("http://service").text
+
+        ```
+
+        If you want to watch the logs of multiple services, you can pass a list of service names.
+            
+            ```python   
+            
+            watcher = deployment.logswatcher(["service1", "service2"])
+            with watcher:
+                # do something with service logs
+                print(requests.get("http://service1").text
+                print(requests.get("http://service2").text
+
+            print(watcher.collected_logs)
+
+            ```
+
+        Parameters
+        ----------
+        service_name : Union[List[str], str]
+            The name of the service(s) to watch the logs for.
+
+        Returns
+        -------
+        LogWatcher
+            The log watcher object.
+        """
+        if isinstance(service_names, str):
+            service_names = [service_names]
+
+        return LogWatcher(cli_bearer=self, services=service_names, tail=1, **kwargs)
+
+    async def aup(self, detach=True):
+        """Up the deployment.
+
+        Will call docker-compose up on the deployment.
+        This method is called automatically when using the deployment as a context manager and
+        if up_on_enter is True.
+
+        Returns
+        -------
+        List[str]
+            The logs of the up command.
+        """
+
         logs = []
-        async for type, log in self._cli.astream_up(stream_logs=True, detach=True):
+        async for type, log in self._cli.astream_up(detach=detach):
             logs.append(log)
             self.logger.on_stop(log)
 
         return logs
 
     async def arestart(
-        self, services: List[str] = None, await_health=True, await_health_timeout=3
+        self, services: Union[List[str], str], await_health: bool =True, await_health_timeout: int =3
     ):
+        """Restarts a service.
+
+        Will call docker-compose restart on the list of services.
+        If await_health is True, will await for the health checks of these services to pass.
+        
+        Parameters
+        ----------
+        services : Union[List[str], str], optional
+            The list of services to restart, by default None
+        await_health : bool, optional
+            Should we await for the health checks to pass, by default True
+        await_health_timeout : int, optional
+            The time to wait for  before checking the health checks (allows the container to 
+            shutdown), by default 3, is void if await_health is False
+        
+        Returns
+        -------
+        List[str]
+            The logs of the restart command.
+        """
+
+        if isinstance(services, str):
+            services = [services]
+
         logs = []
         async for type, log in self._cli.astream_restart(services=services):
             logs.append(log)
@@ -203,8 +350,28 @@ class Deployment(KoiledModel):
         return logs
 
     def restart(
-        self, services: List[str] = None, await_health=True, await_health_timeout=3
+        self, services: Union[List[str], str], await_health: bool =True, await_health_timeout: int =3
     ):
+        """Restarts a service. (sync)
+
+        Will call docker-compose restart on the list of services.
+        If await_health is True, will await for the health checks of these services to pass.
+        
+        Parameters
+        ----------
+        services : Union[List[str], str], optional
+            The list of services to restart, by default None
+        await_health : bool, optional
+            Should we await for the health checks to pass, by default True
+        await_health_timeout : int, optional
+            The time to wait for  before checking the health checks (allows the container to 
+            shutdown), by default 3, is void if await_health is False
+        
+        Returns
+        -------
+        List[str]
+            The logs of the restart command.
+        """
         return unkoil(
             self.arestart,
             services=services,
@@ -213,6 +380,28 @@ class Deployment(KoiledModel):
         )
 
     async def apull(self):
+        """Pull the deployment.
+
+        Will call docker-compose pull on the deployment.
+        This method is called automatically when using the deployment as a context manager and
+        if pull_on_enter is True.
+
+        Returns
+        -------
+        List[str]
+            The logs of the pull command.
+
+        Raises
+        ------
+        NotInitializedError
+            If the deployment has not been initialized.
+        """
+        if self._cli is None:
+            raise NotInitializedError(
+                "Deployment not initialized. Call await deployment.ainitialize() first."
+            )
+        
+
         logs = []
         async for type, log in self._cli.astream_pull(stream_logs=True, detach=True):
             logs.append(log)
@@ -220,15 +409,47 @@ class Deployment(KoiledModel):
 
         return logs
 
-    async def adown(self):
+    async def adown(self) -> List[str]:
+        """Down the deployment.
+        
+        Will call docker-compose down on the deployment.
+        This method is called automatically when using the deployment as a context manager and
+        if down_on_exit is True.
+
+        Returns
+        -------
+        List[str]
+            The logs of the down command.
+        """
+        if self._cli is None:
+            raise NotInitializedError(
+                "Deployment not initialized. Call await deployment.ainitialize() first."
+            )
+
         logs = []
-        async for type, log in self._cli.astream_pull(stream_logs=True, detach=True):
+        async for type, log in self._cli.astream_down():
             logs.append(log)
-            self.logger.on_pull(log)
+            self.logger.on_down(log)
 
         return logs
 
-    async def astop(self):
+    async def astop(self) -> List[str]:
+        """Stop the deployment.
+
+        Will call docker-compose stop on the deployment.
+        This method is called automatically when using the deployment as a context manager and
+        if stop_on_exit is True.
+
+        Returns
+        -------
+        List[str]
+            The logs of the stop command.
+        """
+        if self._cli is None:
+            raise NotInitializedError(
+                "Deployment not initialized. Call await deployment.ainitialize() first."
+            )
+
         logs = []
         async for type, log in self._cli.astream_stop():
             logs.append(log)
@@ -237,15 +458,29 @@ class Deployment(KoiledModel):
         return logs
 
     async def aget_cli(self):
+        """Get the CLI object of the deployment.
+
+        THis is the defining method of a CLI bearer, and will
+        be called by any method that needs the CLI object.
+        This is an async method because initializing the CLI object
+        is an async operation (as it might incure network calls).
+        """
         assert (
             self._cli is not None
         ), "Deployment not initialized. Call await deployment.ainitialize() first."
         return self._cli
 
-    async def __aenter__(self):
-        self._threadpool = ThreadPoolExecutor(max_workers=self.threadpool_workers)
-
-        await self.ainititialize()
+    async def __aenter__(self) -> "Deployment":
+        """Async enter method for the deployment.
+        
+        Will initialize the project, if auto_initialize is True.
+        Will inspect the deployment, if inspect_on_enter is True.
+        Will call docker-compose up and pull on the deployment, if
+        up_on_enter and pull_on_enter are True respectively.
+        
+        """
+        if self.initialize_on_enter:
+            await self.ainitialize()
 
         if self.inspect_on_enter:
             await self.ainspect()
@@ -265,6 +500,11 @@ class Deployment(KoiledModel):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async exit method for the deployment.
+
+        Will call docker-compose down and stop on the deployment, if
+        down_on_exit and stop_on_exit are True respectively.
+        """
         if self.stop_on_exit:
             await self.project.abefore_stop()
             await self.astop()
@@ -272,8 +512,14 @@ class Deployment(KoiledModel):
         if self.down_on_exit:
             await self.project.abefore_down()
             await self.adown()
+
+        if self.tear_down_on_exit:
+            await self.project.atear_down(self._cli)
+
+
         self._cli = None
 
     class Config:
+        """ Pydantic configuration for the deployment."""
         arbitrary_types_allowed = True
         underscore_attrs_are_private = True

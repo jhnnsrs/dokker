@@ -1,4 +1,4 @@
-from dokker import local, local_project, HealthCheck
+from dokker import local, HealthCheck
 import pytest
 
 

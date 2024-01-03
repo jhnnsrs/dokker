@@ -1,72 +1,141 @@
 from .deployment import Deployment, HealthCheck
-from .project import Project
-import os
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Union
 from dokker.projects.copy import CopyPathProject
 from dokker.projects.local import LocalProject
+from dokker.types import ValidPath
 
 if TYPE_CHECKING:
-    from dokker.projects.contrib.cookiecutter import CookieCutterProject
+    pass
 
 
-def local_project(
-    docker_compose_file: str,
-) -> "LocalProject":
-    return LocalProject(compose_files=[docker_compose_file])
+def mirror(
+      local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = None  
+) -> Deployment:
+    """Creates a Mirro Deployment
+
+    A mirror deployment is a deployment that copies a local path to a temporary
+    directory and runs it from there. This is useful for testing projects that
+    are in production environments btu should be tested locally.
+
+    Parameters
+    ----------
+    local_path : ValidPath
+        _description_
+    health_checks : Optional[List[HealthCheck]], optional
+        _description_, by default None
+
+    Returns
+    -------
+    Deployment
+        The deployment
+    """
+    
+    project =  CopyPathProject(project_path=local_path)
+    deployment = Deployment(
+        project=project,
+        health_checks=health_checks,
+    )
+
+    deployment.pull_on_enter = False
+    deployment.down_on_exit = False
+    deployment.stop_on_exit = False
+
+    return deployment
 
 
-def cookiecutter_project(repo_url: str) -> "CookieCutterProject":
-    """Generates a CookieCutterProject.
 
-    This is a helper function to generate a CookieCutterProject,
-    which will be expanded to a project in the .dokker directory.
+def cookiecutter(
+        repo_url: str, health_checks: Optional[List[HealthCheck]] = None
+) -> Deployment:
+    """Generates a cookiecutter deployemnt.
 
-    Args:
-        repo_url (str): The url to the cookiecutter template.
+    A cookiecutter deployemnt is a deployemnt that is generated from a cookiecutter template.
+    This function is a helper function to generate a CookieCutterProject, and
+    requires that cookiecutter is installed.
 
-    Returns:
-        CookieCutterProject: The generated project.
+    Parameters
+    ----------
+    repo_url : str
+        The url to the cookiecutter template.
+
+    Returns
+    -------
+    Deployment
+        The deployment
     """
     from dokker.projects.contrib.cookiecutter import CookieCutterProject
 
-    return CookieCutterProject(repo_url=repo_url, project_name="test")
+    project =  CookieCutterProject(repo_url=repo_url)
+    deployment = Deployment(
+        project=project,
+        health_checks=health_checks,
+    )
 
+    deployment.pull_on_enter = False
+    deployment.down_on_exit = False
+    deployment.stop_on_exit = False
 
-def copy_path_project(
-    project_path: str, project_name: Optional[str] = None
-) -> CopyPathProject:
-    return CopyPathProject(project_path=project_path, project_name=project_name)
-
-
-def easy(project: Project, health_checks: List[HealthCheck] = None) -> Deployment:
-    if health_checks is None:
-        health_checks = []
-    return Deployment(project=project, health_checks=health_checks)
+    return deployment
 
 
 def local(
-    docker_compose_file: str, health_checks: List[HealthCheck] = None
+    docker_compose_file: Union[ValidPath, List[ValidPath]], health_checks: Optional[List[HealthCheck]] = None
 ) -> Deployment:
+    """Creates a local deployment.
+
+    A local deployment is a deployment that runs a docker-compose file
+    locally. This is useful for testing a deployment that we do not want to
+    control (e.g. calling down) on exit.
+    """
+    if not isinstance(docker_compose_file, list):
+        docker_compose_file = [docker_compose_file]
+
     if health_checks is None:
         health_checks = []
     project = LocalProject(
-        compose_files=[docker_compose_file],
+        compose_files=docker_compose_file,
     )
-    return easy(project, health_checks=health_checks)
+    deployment = Deployment(
+        project=project,
+        health_checks=health_checks,
+    )
+
+    deployment.pull_on_enter = False
+    deployment.down_on_exit = False
+    deployment.stop_on_exit = True
+    deployment.initialize_on_enter = True
+    deployment.up_on_enter = True
+    deployment.down_on_exit = False
+    return deployment
 
 
 def monitoring(
-    docker_compose_file: str, health_checks: List[HealthCheck] = None
+    docker_compose_file: Union[ValidPath, List[ValidPath]], health_checks: Optional[List[HealthCheck]] = None
 ) -> Deployment:
-    """Creates a deployment that does not pull on enter, down on exit, or stop on exit.
+    """Generates a monitoring deployment.
 
-    This is useful for monitoring a deployment.
+    A monitoring deployment is a deployment that never directly interacts with the
+    docker-compose CLI. This is useful for inspect / monitoring a deployment
+    that is running in production.
 
+    Parameters
+    ----------
+    docker_compose_file : Union[ValidPath, List[ValidPath]]
+        The docker-compose file to run.
+    health_checks : Optional[List[HealthCheck]], optional
+        The health checks to run, by default None
+
+    Returns
+    -------
+    Deployment
+        The deployment
     """
+    if not isinstance(docker_compose_file, list):
+        docker_compose_file = [docker_compose_file]
     if health_checks is None:
         health_checks = []
     project = LocalProject(
-        compose_files=[docker_compose_file],
+        compose_files=docker_compose_file,
     )
     deployment = Deployment(
         project=project,
@@ -76,5 +145,49 @@ def monitoring(
     deployment.pull_on_enter = False
     deployment.down_on_exit = False
     deployment.stop_on_exit = False
+    deployment.health_on_enter = True
+    deployment.up_on_enter = False
+
+    return deployment
+
+
+def testing(
+    docker_compose_file: Union[ValidPath, List[ValidPath]], health_checks: Optional[List[HealthCheck]] = None
+) -> Deployment:
+    """Generates a testing deployment.
+
+    A testing deployment is a deployment that runs a docker-compose file, locally
+    and takes care of pulling, initializing, and tearing down the deployment.
+
+    Parameters
+    ----------
+    docker_compose_file : Union[ValidPath, List[ValidPath]]
+        The docker-compose file to run.
+    health_checks : Optional[List[HealthCheck]], optional
+        The health checks to run, by default None
+
+    Returns
+    -------
+    Deployment
+        The deployment
+    """
+    if not isinstance(docker_compose_file, list):
+        docker_compose_file = [docker_compose_file]
+    if health_checks is None:
+        health_checks = []
+    project = LocalProject(
+        compose_files=docker_compose_file,
+    )
+    deployment = Deployment(
+        project=project,
+        health_checks=health_checks,
+    )
+
+    deployment.pull_on_enter = True
+    deployment.initialize_on_enter = True
+    deployment.up_on_enter = True
+    deployment.down_on_exit = True
+    deployment.stop_on_exit = True
+    deployment.tear_down_on_exit = True
 
     return deployment
