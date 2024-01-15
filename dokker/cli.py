@@ -1,4 +1,14 @@
-from typing import Optional, List, Union, Protocol, runtime_checkable,  Dict, Literal, AsyncIterator, Tuple
+from typing import (
+    Optional,
+    List,
+    Union,
+    Protocol,
+    runtime_checkable,
+    Dict,
+    Literal,
+    AsyncIterator,
+    Tuple,
+)
 from pydantic import Field, validator
 from koil.composition import KoiledModel
 from pathlib import Path
@@ -8,13 +18,13 @@ from .compose_spec import ComposeSpec
 import json
 import os
 from dokker.errors import DokkerError
-
-
-ValidPath = Union[str, Path]
+from dokker.types import ValidPath, LogStream
+from dokker.command import astream_command
 
 
 class CLIError(DokkerError):
-    """ An error that is raised when the CLI fails to run."""
+    """An error that is raised when the CLI fails to run."""
+
     pass
 
 
@@ -28,9 +38,6 @@ class CLIBearer(Protocol):
     async def aget_cli(self) -> "CLI":
         """Returns the CLI for the object."""
         ...
-
-
-LogStream = AsyncIterator[Tuple[str, str]]
 
 
 class CLI(KoiledModel):
@@ -70,7 +77,7 @@ class CLI(KoiledModel):
             raise ValueError(f"Compose File {v} does not exist.")
 
     @property
-    def docker_cmd(self) -> list[str]:
+    def docker_cmd(self) -> List[str]:
         """Builds the docker command. This is the base prepended
         command that will be run by the CLI.
         """
@@ -112,7 +119,6 @@ class CLI(KoiledModel):
 
         return result
 
-
     async def astream_docker_logs(
         self,
         tail: Optional[str] = None,
@@ -142,78 +148,8 @@ class CLI(KoiledModel):
                 services = [services]
             full_cmd += services
 
-        async for line in self.astream_command(full_cmd):
+        async for line in astream_command(full_cmd):
             yield line
-
-    async def _astread_stream(
-        self,
-        stream: asyncio.StreamReader,
-        queue: asyncio.Queue,
-        name: str,
-    ) -> None:
-        async for line in stream:
-            await queue.put((name, line.decode("utf-8").strip()))
-
-        await queue.put(None)
-
-    async def astream_command(self, command: List[str]) -> LogStream:
-        # Create the subprocess using asyncio's subprocess
-
-        full_cmd = " ".join(map(str, command))
-
-        proc = await asyncio.create_subprocess_shell(
-            full_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        if proc.stdout is None or proc.stderr is None:
-            raise CLIError("Could not create the subprocess.")
-
-        queue = asyncio.Queue() # type: asyncio.Queue[tuple[str, str]] # cannot use type annotation because of python 3.8
-        # Create and start tasks for reading each stream
-
-        try:
-            readers = [
-                asyncio.create_task(self._astread_stream(proc.stdout, queue, "STDOUT")),
-                asyncio.create_task(self._astread_stream(proc.stderr, queue, "STDERR")),
-            ]
-
-            # Track the number of readers that are finished
-            finished_readers = 0
-            while finished_readers < len(readers):
-                line = await queue.get()
-                if line is None:
-                    finished_readers += 1  # One reader has finished
-                    continue
-                yield line
-
-            # Cleanup: cancel any remaining reader tasks
-            for reader in readers:
-                reader.cancel()
-                try:
-                    await reader
-                except asyncio.CancelledError:
-                    pass
-
-        except asyncio.CancelledError:
-            # Handle cancellation request
-            proc.kill()
-            await proc.wait()  # Wait for the subprocess to exit after receiving SIGINT
-
-            # Cleanup: cancel any remaining reader tasks
-            for reader in readers:
-                reader.cancel()
-                try:
-                    await reader
-                except asyncio.CancelledError:
-                    pass
-
-            raise
-
-        except Exception as e:
-            raise e
-        
 
     async def astream_down(
         self,
@@ -222,7 +158,6 @@ class CLI(KoiledModel):
         timeout: Optional[int] = None,
         volumes: bool = False,
     ) -> LogStream:
-        
         full_cmd = self.docker_cmd + ["down"]
         if remove_orphans:
             full_cmd.append("--remove-orphans")
@@ -232,10 +167,9 @@ class CLI(KoiledModel):
             full_cmd.append(f"--timeout {timeout}")
         if volumes:
             full_cmd.append("--volumes")
-        
-        async for line in self.astream_command(full_cmd):
+
+        async for line in astream_command(full_cmd):
             yield line
-    
 
     async def astream_pull(
         self,
@@ -257,7 +191,7 @@ class CLI(KoiledModel):
                 services = [services]
             full_cmd += services
 
-        async for line in self.astream_command(full_cmd):
+        async for line in astream_command(full_cmd):
             yield line
 
     async def astream_stop(
@@ -278,7 +212,7 @@ class CLI(KoiledModel):
                 services = [services]
             full_cmd += services
 
-        async for line in self.astream_command(full_cmd):
+        async for line in astream_command(full_cmd):
             yield line
 
     async def astream_restart(
@@ -292,7 +226,7 @@ class CLI(KoiledModel):
                 services = [services]
             full_cmd += services
 
-        async for line in self.astream_command(full_cmd):
+        async for line in astream_command(full_cmd):
             yield line
 
     async def astream_up(
@@ -317,10 +251,6 @@ class CLI(KoiledModel):
         pull: Literal["always", "missing", "never", None] = None,
         stream_logs: bool = False,
     ) -> LogStream:
-            
-
-
-
         if quiet and stream_logs:
             raise ValueError(
                 "It's not possible to have stream_logs=True and quiet=True at the same time. "
@@ -370,7 +300,7 @@ class CLI(KoiledModel):
                 services = [services]
             full_cmd += services
 
-        async for line in self.astream_command(full_cmd):
+        async for line in astream_command(full_cmd):
             yield line
 
     async def ainspect_config(self) -> ComposeSpec:
@@ -390,7 +320,7 @@ class CLI(KoiledModel):
 
         lines = []
 
-        async for x, line in self.astream_command(full_cmd):
+        async for x, line in astream_command(full_cmd):
             lines.append(line)
 
         result = "\n".join(lines)

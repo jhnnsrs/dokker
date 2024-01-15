@@ -30,7 +30,9 @@ class HealthCheck(BaseModel):
     max_retries: int = 3
     timeout: int = 10
     error_with_logs: bool = True
-    headers: Optional[dict] = Field(default_factory=lambda: {"Content-Type": "application/json"})
+    headers: Optional[dict] = Field(
+        default_factory=lambda: {"Content-Type": "application/json"}
+    )
     ssl_context: SSLContext = Field(
         default_factory=lambda: ssl.create_default_context(cafile=certifi.where()),
         description="SSL Context to use for the request",
@@ -38,18 +40,18 @@ class HealthCheck(BaseModel):
 
     async def acheck(self):
         async with aiohttp.ClientSession(
-                headers=self.headers,
-                connector=aiohttp.TCPConnector(ssl=self.ssl_context),
-            ) as session:
-                # get json from endpoint
-                async with session.get(self.url) as resp:
-                    assert resp.status == 200
-                    return await resp.text()
-                
+            headers=self.headers,
+            connector=aiohttp.TCPConnector(ssl=self.ssl_context),
+        ) as session:
+            # get json from endpoint
+            async with session.get(self.url) as resp:
+                assert resp.status == 200
+                return await resp.text()
+
     class Config:
         arbitrary_types_allowed = True
         underscore_attrs_are_private = True
-                
+
 
 @runtime_checkable
 class Logger(Protocol):
@@ -67,8 +69,6 @@ class Logger(Protocol):
 
     def on_down(self, log: str):
         ...
-
-
 
 
 class Deployment(KoiledModel):
@@ -98,7 +98,6 @@ class Deployment(KoiledModel):
 
     _spec: ComposeSpec
     _cli: CLI
-    
 
     @property
     def spec(self) -> ComposeSpec:
@@ -128,7 +127,7 @@ class Deployment(KoiledModel):
 
     async def ainitialize(self) -> "CLI":
         """Initialize the deployment.
-        
+
         Will initialize the deployment through its project and return the CLI object.
         This method is called automatically when using the deployment as a context manager.
 
@@ -159,7 +158,7 @@ class Deployment(KoiledModel):
         """
         if self._cli is None:
             if self.auto_initialize:
-                await self.ainititialize()
+                await self.ainitialize()
             else:
                 raise NotInitializedError(
                     "Deployment not initialized and auto_initialize is False. Call await deployment.ainitialize() first."
@@ -196,7 +195,7 @@ class Deployment(KoiledModel):
         HealthCheck
             The health check object.
         """
-        
+
         check = HealthCheck(
             url=url,
             service=service,
@@ -208,9 +207,7 @@ class Deployment(KoiledModel):
         self.health_checks.append(check)
         return check
 
-
     async def acheck_healthz(self, check: HealthCheck, retry: int = 0):
-
         try:
             await check.acheck()
         except Exception as e:
@@ -224,8 +221,10 @@ class Deployment(KoiledModel):
                     ) from e
 
                 logs = []
-                
-                async for std, i in  self._cli.astream_docker_logs(check.service):
+
+                async for std, i in self._cli.astream_docker_logs(
+                    services=[check.service]
+                ):
                     logs.append(i)
 
                 raise HealthError(
@@ -264,9 +263,9 @@ class Deployment(KoiledModel):
         ```
 
         If you want to watch the logs of multiple services, you can pass a list of service names.
-            
-            ```python   
-            
+
+            ```python
+
             watcher = deployment.logswatcher(["service1", "service2"])
             with watcher:
                 # do something with service logs
@@ -313,13 +312,16 @@ class Deployment(KoiledModel):
         return logs
 
     async def arestart(
-        self, services: Union[List[str], str], await_health: bool =True, await_health_timeout: int =3
+        self,
+        services: Union[List[str], str],
+        await_health: bool = True,
+        await_health_timeout: int = 3,
     ):
         """Restarts a service.
 
         Will call docker-compose restart on the list of services.
         If await_health is True, will await for the health checks of these services to pass.
-        
+
         Parameters
         ----------
         services : Union[List[str], str], optional
@@ -327,9 +329,9 @@ class Deployment(KoiledModel):
         await_health : bool, optional
             Should we await for the health checks to pass, by default True
         await_health_timeout : int, optional
-            The time to wait for  before checking the health checks (allows the container to 
+            The time to wait for  before checking the health checks (allows the container to
             shutdown), by default 3, is void if await_health is False
-        
+
         Returns
         -------
         List[str]
@@ -350,13 +352,16 @@ class Deployment(KoiledModel):
         return logs
 
     def restart(
-        self, services: Union[List[str], str], await_health: bool =True, await_health_timeout: int =3
+        self,
+        services: Union[List[str], str],
+        await_health: bool = True,
+        await_health_timeout: int = 3,
     ):
         """Restarts a service. (sync)
 
         Will call docker-compose restart on the list of services.
         If await_health is True, will await for the health checks of these services to pass.
-        
+
         Parameters
         ----------
         services : Union[List[str], str], optional
@@ -364,9 +369,9 @@ class Deployment(KoiledModel):
         await_health : bool, optional
             Should we await for the health checks to pass, by default True
         await_health_timeout : int, optional
-            The time to wait for  before checking the health checks (allows the container to 
+            The time to wait for  before checking the health checks (allows the container to
             shutdown), by default 3, is void if await_health is False
-        
+
         Returns
         -------
         List[str]
@@ -400,10 +405,9 @@ class Deployment(KoiledModel):
             raise NotInitializedError(
                 "Deployment not initialized. Call await deployment.ainitialize() first."
             )
-        
 
         logs = []
-        async for type, log in self._cli.astream_pull(stream_logs=True, detach=True):
+        async for type, log in self._cli.astream_pull():
             logs.append(log)
             self.logger.on_pull(log)
 
@@ -411,7 +415,7 @@ class Deployment(KoiledModel):
 
     async def adown(self) -> List[str]:
         """Down the deployment.
-        
+
         Will call docker-compose down on the deployment.
         This method is called automatically when using the deployment as a context manager and
         if down_on_exit is True.
@@ -472,12 +476,12 @@ class Deployment(KoiledModel):
 
     async def __aenter__(self) -> "Deployment":
         """Async enter method for the deployment.
-        
+
         Will initialize the project, if auto_initialize is True.
         Will inspect the deployment, if inspect_on_enter is True.
         Will call docker-compose up and pull on the deployment, if
         up_on_enter and pull_on_enter are True respectively.
-        
+
         """
         if self.initialize_on_enter:
             await self.ainitialize()
@@ -516,10 +520,10 @@ class Deployment(KoiledModel):
         if self.tear_down_on_exit:
             await self.project.atear_down(self._cli)
 
-
         self._cli = None
 
     class Config:
-        """ Pydantic configuration for the deployment."""
+        """Pydantic configuration for the deployment."""
+
         arbitrary_types_allowed = True
         underscore_attrs_are_private = True

@@ -1,0 +1,32 @@
+db:
+  db_name: mikro_db
+  engine: django.db.backends.postgresql
+  host: db
+  password: d34567c83f0d5c0cf902b1f113f3771c
+  port: 5432
+  username: shabbychestnutlemur
+django:
+  admin:
+    password: admin
+    username: admin
+  debug: false
+  hosts:
+  - '*'
+  secret_key: 84eba26cf410ed5e7aadf2d5bbbd2674
+lok:
+  issuer: lok
+  key_type: RS256
+  public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDNDA3Ru8CluXQbxmszu31SzUqTrhKF1m6/H2fGpQqc8v+vXshFHMdGIy5IjASydP945pBZXxLcDfbkeFiSQBgVYto3s2ec9fmu8GGpEMaszq2cy09wEY/kitBt/fm8ZD7rTIEGTR3UJOJsR/4VZxHF8RTEUpXTl1adfZLQTW5AhCfniMQRDOQIq29nkoejPdJsKYq28iUJJhAIE7JwaVdmk3pvTGCXx1Hcn0TGutPC+TfmcQO9txBvSJCgJRacExmUQ7eQjMZ6wcZFrQ9eVMi6Knu7CryoWc8+qV9ELNvm08lv6OPu3giVyrGLzyudBVoXBRZ3Ju8THsXGxwfsf0Ar
+minio:
+  access_key: leakysilverangelfish
+  buckets:
+    zarr: zarr
+    parquet: parquet
+    media: mikromedia
+  host: minio
+  port: '9000'
+  protocol: http
+  secret_key: 75b7d7cfdd478a677a01133cdf0c37fb
+redis:
+  host: redis
+  port: 6379

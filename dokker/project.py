@@ -79,7 +79,7 @@ class Project(Protocol):
         ...
 
     async def abefore_stop(self) -> None:
-        """A setup method for the project.
+        """A selisttup method for the project.
 
         Returns:
             Optional[List[str]]: A list of logs from the setup process.

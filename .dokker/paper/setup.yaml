@@ -1,0 +1,11 @@
+adminPassword: admin
+adminUsername: admin
+groups:
+- description: mygroup
+  name: mygroup
+name: paper
+users:
+- groups:
+  - mygroup
+  password: demo
+  username: demo

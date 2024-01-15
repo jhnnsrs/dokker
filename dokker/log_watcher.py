@@ -79,20 +79,12 @@ class LogWatcher(KoiledModel):
             await self.aon_logs(log)
             self.collected_logs.append(log)
 
-    def on_watch_task_done(self, task: asyncio.Task):
-        exception = task.exception()
-        if task.cancelled():
-            return
-        if exception:
-            raise exception
-        if task.done():
-            return
+        
 
     async def __aenter__(self):
         self.collected_logs = []
         self._just_one_log = asyncio.Future()
         self._watch_task = asyncio.create_task(self.awatch_logs())
-        self._watch_task.add_done_callback(self.on_watch_task_done)
 
         if self.wait_for_first_log:
             await self._just_one_log

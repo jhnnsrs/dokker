@@ -29,6 +29,8 @@ def mirror(
     Deployment
         The deployment
     """
+    if health_checks is None:
+        health_checks = []
     
     project =  CopyPathProject(project_path=local_path)
     deployment = Deployment(
@@ -64,6 +66,9 @@ def cookiecutter(
         The deployment
     """
     from dokker.projects.contrib.cookiecutter import CookieCutterProject
+
+    if health_checks is None:
+        health_checks = []
 
     project =  CookieCutterProject(repo_url=repo_url)
     deployment = Deployment(
