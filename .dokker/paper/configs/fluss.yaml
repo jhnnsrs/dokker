@@ -2,9 +2,9 @@ db:
   db_name: fluss_db
   engine: django.db.backends.postgresql
   host: db
-  password: d34567c83f0d5c0cf902b1f113f3771c
+  password: 729b57e27b27aa315f99db185033bde0
   port: 5432
-  username: shabbychestnutlemur
+  username: queasymaroonretriever
 django:
   admin:
     password: admin
@@ -12,19 +12,19 @@ django:
   debug: false
   hosts:
   - '*'
-  secret_key: 4c54467cabff1181007961b4fb869c82
+  secret_key: 3d46033125ce2dec9be77a08591100eb
 lok:
   issuer: lok
   key_type: RS256
-  public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDNDA3Ru8CluXQbxmszu31SzUqTrhKF1m6/H2fGpQqc8v+vXshFHMdGIy5IjASydP945pBZXxLcDfbkeFiSQBgVYto3s2ec9fmu8GGpEMaszq2cy09wEY/kitBt/fm8ZD7rTIEGTR3UJOJsR/4VZxHF8RTEUpXTl1adfZLQTW5AhCfniMQRDOQIq29nkoejPdJsKYq28iUJJhAIE7JwaVdmk3pvTGCXx1Hcn0TGutPC+TfmcQO9txBvSJCgJRacExmUQ7eQjMZ6wcZFrQ9eVMi6Knu7CryoWc8+qV9ELNvm08lv6OPu3giVyrGLzyudBVoXBRZ3Ju8THsXGxwfsf0Ar
+  public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7OBffVnKNC/qh0E1UhKWonUpZ0VeE8t7R+p7BYDEcUYpydFKoWpLu6YOeLeHcW0kbnr+DGJcMJTf1vT+NJ4FUguitEiS8n/DXfZd5v067lWLZUt1+RUDVnNRsNNuBOgpJo+bSuusvhrwxI/RDkVneSOGQet0fEYqyoenAyJOaByMwOmC1LJVFaYkYndEF3HhAt/BurmqS1dlh7COFJhxkN70/AVHdMuEOjoFDrHTU5lzyP/OJDH+zmzCjZ5+qg46SqeRPfQji0fzNxdgrbd0jlRPEnU65MIk1Q012IlwTfbtobm7kg6S3iKYT6bstRd5ubCO65E/n44zdwCSdCQN3
 minio:
-  access_key: nerdylimescorpion
+  access_key: muggyturquoiseopossum
   buckets:
    media: flussmedia
   host: minio
   port: '9000'
   protocol: http
-  secret_key: 00dcfa0d589dae98a1f0034f836cf7fc
+  secret_key: 5b84af04c935d463b55365cb03068bb6
 redis:
   host: redis
   port: 6379

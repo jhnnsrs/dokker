@@ -1,32 +1,31 @@
 from dokker import local, HealthCheck, Deployment 
 import pytest
-from dokker.projects.contrib.konstruktor import KonstruktorProject
+from dokker.projects.contrib.konstruktor import KonstruktorProject, RepoModel
+from .utils import build_relative
+import json
+
+async def test_konstruktor():
 
 
-
-def test_konstruktor():
-
-
-    project = KonstruktorProject()
-    deployment = Deployment(
-        project=project,
+    project = KonstruktorProject(
+        channel="paper",
+        repo="https://raw.githubusercontent.com/jhnnsrs/konstruktor/master/repo/channels.json"
     )
 
-    deployment.pull_on_enter = False
-    deployment.down_on_exit = False
-    deployment.stop_on_exit = True
-    deployment.initialize_on_enter = True
-    deployment.up_on_enter = True
-    deployment.down_on_exit = False
+    await project.ainititialize()
+
+@pytest.mark.validate
+def test_validate_konstruktor():
+
+    x = build_relative("repos", "konstruktor.json")
+
+    with open(x, "r") as f:
+        data = json.load(f)
+
+    RepoModel(**data)
 
 
 
 
-    with deployment:
-        # do something with redis
-
-        print("hello world")
-
-        pass
 
 

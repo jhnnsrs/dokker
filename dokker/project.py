@@ -1,14 +1,10 @@
-from typing import Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable, Dict, Any
 from .cli import CLI
 
 
 @runtime_checkable
 class Project(Protocol):
-    """A Project
-
-    Projects are the core representation of the organization of a
-    project that can be run with the docker CLI. When a project is
-    setup by the Setup class, it can decide to setup the project asy
+    """A Projectaget_values, it can decide to setup the project asy
     nchronousl, e.g by cloning a git repository, or copiying a
     directory into the .dokker directory. The project can also
     implement methods that will be run before and after certain
@@ -26,6 +22,7 @@ class Project(Protocol):
             The CLI to use for the project.
         """
         ...
+
 
 
     async def atear_down(self, cli: CLI) -> None:

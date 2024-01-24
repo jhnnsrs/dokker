@@ -2,9 +2,9 @@ db:
   db_name: rekuest_db
   engine: django.db.backends.postgresql
   host: db
-  password: d34567c83f0d5c0cf902b1f113f3771c
+  password: 729b57e27b27aa315f99db185033bde0
   port: 5432
-  username: shabbychestnutlemur
+  username: queasymaroonretriever
 django:
   admin:
     password: admin
@@ -12,19 +12,19 @@ django:
   debug: false
   hosts:
   - '*'
-  secret_key: eeb78be673d5701db339984969bfd691
+  secret_key: 2d6519d5e6b185d9cfe40678e8492cbd
 lok:
   issuer: lok
   key_type: RS256
-  public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDNDA3Ru8CluXQbxmszu31SzUqTrhKF1m6/H2fGpQqc8v+vXshFHMdGIy5IjASydP945pBZXxLcDfbkeFiSQBgVYto3s2ec9fmu8GGpEMaszq2cy09wEY/kitBt/fm8ZD7rTIEGTR3UJOJsR/4VZxHF8RTEUpXTl1adfZLQTW5AhCfniMQRDOQIq29nkoejPdJsKYq28iUJJhAIE7JwaVdmk3pvTGCXx1Hcn0TGutPC+TfmcQO9txBvSJCgJRacExmUQ7eQjMZ6wcZFrQ9eVMi6Knu7CryoWc8+qV9ELNvm08lv6OPu3giVyrGLzyudBVoXBRZ3Ju8THsXGxwfsf0Ar
+  public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7OBffVnKNC/qh0E1UhKWonUpZ0VeE8t7R+p7BYDEcUYpydFKoWpLu6YOeLeHcW0kbnr+DGJcMJTf1vT+NJ4FUguitEiS8n/DXfZd5v067lWLZUt1+RUDVnNRsNNuBOgpJo+bSuusvhrwxI/RDkVneSOGQet0fEYqyoenAyJOaByMwOmC1LJVFaYkYndEF3HhAt/BurmqS1dlh7COFJhxkN70/AVHdMuEOjoFDrHTU5lzyP/OJDH+zmzCjZ5+qg46SqeRPfQji0fzNxdgrbd0jlRPEnU65MIk1Q012IlwTfbtobm7kg6S3iKYT6bstRd5ubCO65E/n44zdwCSdCQN3
 minio:
-  access_key: droopycornflowercoral
+  access_key: flimsycharcoalgorilla
   buckets:
    media: rekuestmedia
   host: minio
   port: '9000'
   protocol: http
-  secret_key: 63edb928e3235a0459215c8e9313bc19
+  secret_key: f65a15252bf1d809605641993d97b8d9
 redis:
   host: redis
   port: 6379

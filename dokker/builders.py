@@ -97,6 +97,7 @@ def local(
 
     if health_checks is None:
         health_checks = []
+        
     project = LocalProject(
         compose_files=docker_compose_file,
     )

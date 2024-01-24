@@ -1,33 +1,38 @@
-from cookiecutter.main import cookiecutter
 from pydantic import BaseModel, Field
-import os
+from typing import List, Union
+from pathlib import Path
 from dokker.cli import CLI
-from typing import Optional, Dict, Any
-from dokker.errors import DokkerError
-import shutil
-import yaml
+from typing import Dict, Any, Optional
+import logging
+import os
+from dokker.projects.errors import ProjectError
 
-class CookieNotInstalled(DokkerError):
-    """Raised when cookiecutter was instructed to tear down a project, but the project was not initialized."""
+logger = logging.getLogger(__name__)
+
+ValidPath = Union[str, Path]
+
+
+default = os.path.join(os.getcwd(), ".dokker")
+
+
+class DokkerProjectError(ProjectError):
+    """An error raised when a local project is not initialized."""
+
     pass
 
 
-class CookieCutterProject(BaseModel):
-    """A project that is generated from a cookiecutter template.
+class DokkerProject(BaseModel):
+    """A project that is located on the local filesystem.
 
-    This project is a project that is generated from a cookiecutter template.
-    It can be used to run a docker-compose file locally, copying the template
-    to the .dokker directory, and running the docker-compose file from there.
+    This project is a project that is located on the local filesystem.
+    It can be used to run a docker-compose file locally, without
+    interfering with the docker project on tear-down.
     """
 
-    repo_url: str
-    base_dir: str = Field(default_factory=lambda: os.path.join(os.getcwd(), ".dokker"))
-    compose_files: list = Field(default_factory=lambda: ["docker-compose.yml"])
-    extra_context: dict = Field(default_factory=lambda: {})
-    overwrite_if_exists: bool = False
-
-    _project_dir: Optional[str] = None
+    base_dir = Field(default=default)
+    name: str
     _outs: Optional[Dict[str, Any]] = None
+    _project_dir: Optional[ValidPath] = None
 
     async def ainititialize(self) -> CLI:
         """A setup method for the project.
@@ -39,30 +44,22 @@ class CookieCutterProject(BaseModel):
         """
         os.makedirs(self.base_dir, exist_ok=True)
 
-        self._project_dir = cookiecutter(
-            self.repo_url,
-            no_input=True,
-            output_dir=self.base_dir,
-            extra_context=self.extra_context,
-            overwrite_if_exists=self.overwrite_if_exists,
-        )
-        assert isinstance(self._project_dir, str), "cookiecutter should return a string"
+        self._project_dir = os.path.join(self.base_dir, self.name)
+        if not os.path.exists(self._project_dir):
+            raise DokkerProjectError(
+                f"No project found with the name {self.name} in {self.base_dir}. Available projects: {os.listdir(self.base_dir)}"
+            )
 
-        compose_file = os.path.join(self._project_dir, "docker-compose.yml")
+        compose_file = os.path.join(self._project_dir, "docker-compose.yaml")
         if not os.path.exists(compose_file):
             raise Exception(
                 "No docker-compose.yml found in the template. It appears that the template is not a valid dokker template."
             )
 
-        return CLI(compose_files=[compose_file])
-    
-        
-        
-        
-        
-    
+        return CLI(
+            compose_files=[compose_file],
+        )
 
-    
     async def atear_down(self, cli: CLI) -> None:
         """Tear down the project.
 
@@ -77,11 +74,8 @@ class CookieCutterProject(BaseModel):
             The CLI that was used to run the project.
 
         """
-        if not self._project_dir:
-            raise CookieNotInstalled("Cookiecutter project not installed. Did you call initialize?")
-        
-        if os.path.exists(self._project_dir):
-            shutil.rmtree(self._project_dir)
+        logger.info("Tearing down project, is a void operation for a local project")
+        return None
 
     async def abefore_pull(self) -> None:
         """A setup method for the project.
@@ -89,7 +83,7 @@ class CookieCutterProject(BaseModel):
         Returns:
             Optional[List[str]]: A list of logs from the setup process.
         """
-        ...
+        return None
 
     async def abefore_up(self) -> None:
         """A setup method for the project.
@@ -97,7 +91,7 @@ class CookieCutterProject(BaseModel):
         Returns:
             Optional[List[str]]: A list of logs from the setup process.
         """
-        ...
+        return None
 
     async def abefore_enter(self) -> None:
         """A setup method for the project.
@@ -105,7 +99,7 @@ class CookieCutterProject(BaseModel):
         Returns:
             Optional[List[str]]: A list of logs from the setup process.
         """
-        ...
+        return None
 
     async def abefore_down(self) -> None:
         """A setup method for the project.
@@ -113,7 +107,7 @@ class CookieCutterProject(BaseModel):
         Returns:
             Optional[List[str]]: A list of logs from the setup process.
         """
-        ...
+        return None
 
     async def abefore_stop(self) -> None:
         """A setup method for the project.
@@ -121,9 +115,9 @@ class CookieCutterProject(BaseModel):
         Returns:
             Optional[List[str]]: A list of logs from the setup process.
         """
-        ...
+        return None
 
     class Config:
-        """pydantic config class for CookieCutterProject"""
         arbitrary_types_allowed = True
         underscore_attrs_are_private = True
+        extra = "forbid"

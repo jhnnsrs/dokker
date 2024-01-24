@@ -13,12 +13,125 @@ import json
 import yaml
 from typing import Dict, Any, Protocol, runtime_checkable
 from aioconsole import ainput
+from enum import Enum
+from pydantic import validator
 
 
 class InitError(DokkerError):
     """Raised when cookiecutter was instructed to tear down a project, but the project was not initialized."""
 
     pass
+
+
+class BasicType(str, Enum):
+    STR = "str"
+    INT = "int"
+    FLOAT = "float"
+    BOOL = "bool"
+    LIST = "list"
+
+
+
+def set_nested_key_in_dict(d, key, value):
+    if "." not in key:
+        d[key] = value
+        return
+
+    key, rest = key.split(".", 1)
+    if key not in d:
+        d[key] = {}
+    set_nested_key_in_dict(d[key], rest, value)
+
+def get_nested_key_in_dict(d, key):
+    if "." not in key:
+        return d.get(key, None)
+
+    key, rest = key.split(".", 1)
+    return get_nested_key_in_dict(d.get(key, {}), rest)
+
+
+
+class BasicField(BaseModel):
+    key: str
+    label: str
+    description: Optional[str] = ""
+    type: BasicType = BasicType.STR
+    required: bool = False
+    child: Optional["BasicField"] = None
+    choices: Optional[List[Any]] = None
+
+    async def aprompt(self: "BasicField", default: Dict[str, Any]) -> Dict[str, Any]:
+        if self.type == BasicType.LIST:
+            if self.child is None:
+                raise Exception("Child field is required for list type")
+
+            default_values = default.get(self.key, [])
+            if not isinstance(default_values, list):
+                raise Exception("Default value must be a list")
+
+            if len(default_values) > 0:
+                print(f"Current values: {default_values}")
+                if await ainput("Change values? [y/n]: ") != "y":
+                    return default
+
+            list_values = []
+
+            while True:
+                # Default values do not work for child fields
+                list_values.append(await self.child.aprompt({}))
+                if await ainput("Add another? [y/n]: ") != "y":
+                    break
+
+            new_defaults = {**default}
+            set_nested_key_in_dict(new_defaults, self.key, list_values)
+            return new_defaults
+
+        default_value: str = get_nested_key_in_dict(default, self.key)
+
+        prompt_string = f"{self.label}: {self.description} "
+        if default_value is not None:
+            prompt_string += f" [{default_value}] "
+
+        value = await ainput(prompt_string)
+        if value == "" and default_value is not None:
+            value = default_value
+        else:
+
+            if self.type == BasicType.INT:
+                value = int(value)
+            elif self.type == BasicType.FLOAT:
+                value = float(value)
+            elif self.type == BasicType.BOOL:
+                value = value.lower() == "true"
+            elif self.type == BasicType.LIST:
+                value = value.split(",")
+            elif self.type == BasicType.STR:
+                value = str(value)
+            else:
+                raise Exception("Unknown type")
+        
+
+
+
+        new_defaults = {**default}
+        set_nested_key_in_dict(new_defaults, self.key, value)
+        return new_defaults
+
+    
+    
+
+
+class BasicForm(BaseModel):
+    welcome_message: str = "Please fill out the following fields:"
+    fields: List[BasicField] = Field(default_factory=lambda: [])
+
+    async def aretrieve(self, default: Dict[str, Any]) -> Dict[str, Any]:
+        print(self.welcome_message)
+
+        for field in self.fields:
+            default = await field.aprompt(default)
+
+        return default
 
 
 class Feature(BaseModel):
@@ -39,9 +152,11 @@ class Channel(BaseModel):
     builder: str
     forms: List[str] = []
     defaults: dict = {}
+    wizard: List[BasicForm] = []
+    basic_forms: List[BasicForm] = []
 
 
-class Repo(BaseModel):
+class RepoModel(BaseModel):
     repo: str
     channels: List["Channel"]
 
@@ -69,16 +184,45 @@ class FormRegistry(BaseModel):
         underscore_attrs_are_private = True
 
 
-class GPUForm(BaseModel):
-    async def aretrieve(self, default: Dict[str, Any]) -> Dict[str, Any]:
-        key = "gpu"
-        value = await ainput(f"Should we use the gpu?: {key}\n")
-        default[key] = value
-        return default
+@runtime_checkable
+class Repo(Protocol):
+    async def aload(self) -> RepoModel:
+        ...
 
 
-default_registry = FormRegistry()
-default_registry.register("check_gpu", GPUForm())
+class RemoteRepo(BaseModel):
+    url: str
+    ssl_context: SSLContext = Field(
+        default_factory=lambda: ssl.create_default_context(cafile=certifi.where()),
+        description="SSL Context to use for the request",
+    )
+    headers: Optional[dict] = Field(
+        default_factory=lambda: {"Content-Type": "application/json"}
+    )
+
+    async def aload(self) -> RepoModel:
+        async with aiohttp.ClientSession(
+            headers=self.headers,
+            connector=aiohttp.TCPConnector(ssl=self.ssl_context),
+        ) as session:
+            # get json from endpoint
+            async with session.get(self.url) as resp:
+                assert resp.status == 200
+
+                raw_json = await resp.text()
+                json_data = json.loads(raw_json)
+                return RepoModel(**json_data)
+
+    class Config:
+        arbitrary_types_allowed = True
+        underscore_attrs_are_private = True
+
+
+class ModelRepo(BaseModel):
+    model: RepoModel
+
+    async def aload(self) -> RepoModel:
+        return self.model
 
 
 class KonstruktorProject(BaseModel):
@@ -90,11 +234,12 @@ class KonstruktorProject(BaseModel):
     """
 
     channel: str = "paper"
-    repo_url: str = "https://raw.githubusercontent.com/jhnnsrs/konstruktor/master/repo/channels.json"
+    repo: Repo
     base_dir: str = Field(default_factory=lambda: os.path.join(os.getcwd(), ".dokker"))
     compose_files: list = Field(default_factory=lambda: ["docker-compose.yml"])
     extra_context: dict = Field(default_factory=lambda: {})
-    overwrite_if_exists: bool = False
+    error_if_exists: bool = True
+    reinit_if_exists: bool = False
     ssl_context: SSLContext = Field(
         default_factory=lambda: ssl.create_default_context(cafile=certifi.where()),
         description="SSL Context to use for the request",
@@ -104,8 +249,23 @@ class KonstruktorProject(BaseModel):
     )
     name: Optional[str] = None
     skip_forms: bool = False
+    form_registry: FormRegistry = Field(default_factory=lambda: FormRegistry())
+
     _project_dir: Optional[str] = None
-    form_registry: FormRegistry = Field(default_factory=lambda: default_registry)
+    _outs: Optional[Dict[str, Any]] = None
+
+    @validator("repo", pre=True)
+    def validate_repo(cls, v) -> Repo:
+        """Validate the repo type."""
+
+        if isinstance(v, RepoModel):
+            return ModelRepo(model=v)
+        elif isinstance(v, str):
+            return RemoteRepo(url=v)
+        elif isinstance(v, Repo):
+            return v
+        else:
+            raise ValueError("Invalid repo type")
 
     async def _astread_stream(
         self,
@@ -178,19 +338,6 @@ class KonstruktorProject(BaseModel):
         except Exception as e:
             raise e
 
-    async def afetch_repo(self) -> Repo:
-        async with aiohttp.ClientSession(
-            headers=self.headers,
-            connector=aiohttp.TCPConnector(ssl=self.ssl_context),
-        ) as session:
-            # get json from endpoint
-            async with session.get(self.repo_url) as resp:
-                assert resp.status == 200
-
-                raw_json = await resp.text()
-                json_data = json.loads(raw_json)
-                return Repo(**json_data)
-
     async def fetch_image(self, image: str) -> List[str]:
         logs: List[str] = []
 
@@ -214,12 +361,14 @@ class KonstruktorProject(BaseModel):
             The CLI to use for the project.
         """
 
-        repo = await self.afetch_repo()
+        repo = await self.repo.aload()
 
         try:
             channel = next(filter(lambda x: x.name == self.channel, repo.channels))
         except StopIteration:
-            raise InitError(f"Channel {self.channel} not found in repo.")
+            raise InitError(
+                f"Channel {self.channel} not found in repo. Available are {', '.join(map(lambda x: x.name, repo.channels))}"
+            )
 
         os.makedirs(self.base_dir, exist_ok=True)
 
@@ -227,12 +376,10 @@ class KonstruktorProject(BaseModel):
         self._project_dir = os.path.join(self.base_dir, project_name)
 
         if os.path.exists(self._project_dir):
-            print("Project already exists.")
-            if self.overwrite_if_exists:
-                print("Overwriting project.")
-                shutil.rmtree(self._project_dir)
+            if self.error_if_exists and not self.reinit_if_exists:
+                raise InitError("Project already exists.")
 
-            else:
+            if not self.reinit_if_exists:
                 print("Project already exists. Skipping initialization.")
                 compose_file = os.path.join(self._project_dir, "docker-compose.yaml")
                 if not os.path.exists(compose_file):
@@ -243,52 +390,56 @@ class KonstruktorProject(BaseModel):
                 return CLI(
                     compose_files=[compose_file],
                 )
+            else:
+                print("Project already exists. Overwriting.")
+                shutil.rmtree(self._project_dir)
 
-        else:
-            # fetch builder
+        setup_dict = {**channel.defaults, **self.extra_context}
 
-            logs = await self.fetch_image(channel.builder)
+        if not self.skip_forms:
+            for form in channel.forms:
+                setup_dict = await self.arun_form(form, setup_dict)
 
-            setup_dict = {**channel.defaults, **self.extra_context}
+            for basic_form in channel.basic_forms:
+                setup_dict = await basic_form.aretrieve(setup_dict)
 
-            if not self.skip_forms:
-                for form in channel.forms:
-                    setup_dict = await self.arun_form(form, setup_dict)
+        print("Fetching builder image...")
+        logs = await self.fetch_image(channel.builder)
 
-            os.makedirs(self._project_dir, exist_ok=True)
-            # create setup.yaml
-            setup_yaml = os.path.join(self._project_dir, "setup.yaml")
+        os.makedirs(self._project_dir, exist_ok=True)
+        # create setup.yaml
+        setup_yaml = os.path.join(self._project_dir, "setup.yaml")
 
-            with open(setup_yaml, "w") as f:
-                yaml.dump(setup_dict, f)
+        with open(setup_yaml, "w") as f:
+            yaml.dump(setup_dict, f)
 
-            logs = []
+        logs = []
 
-            cmd = [
-                "docker",
-                "run",
-                "--rm",
-                "-v",
-                f"{self._project_dir}:/app/init",
-            ]
+        cmd = [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{self._project_dir}:/app/init",
+        ]
 
-            if os.name == "posix":
-                cmd += ["--user", f"{os.getuid()}:{os.getgid()}"]
+        if os.name == "posix":
+            cmd += ["--user", f"{os.getuid()}:{os.getgid()}"]
 
-            cmd += [channel.builder]
+        cmd += [channel.builder]
 
-            async for type, log in self.astream_command(cmd):
-                logs.append(log)
+        async for type, log in self.astream_command(cmd):
+            logs.append(log)
 
-            compose_file = os.path.join(self._project_dir, "docker-compose.yaml")
-            if not os.path.exists(compose_file):
-                raise Exception(
-                    "No docker-compose.yml found in the template. It appears that the template is not a valid dokker template."
-                )
-
-            return CLI(
-                compose_files=[compose_file],
+        compose_file = os.path.join(self._project_dir, "docker-compose.yaml")
+        if not os.path.exists(compose_file):
+            raise Exception(
+                "No docker-compose.yml found in the template. It appears that the template is not a valid dokker template."
             )
+
+        return CLI(
+            compose_files=[compose_file],
+        )
 
     async def atear_down(self, cli: CLI) -> None:
         """Tear down the project.
@@ -315,8 +466,11 @@ class KonstruktorProject(BaseModel):
                 "Cookiecutter project not installed. Did you call initialize?"
             )
 
+        print("Removing project directory...")
         if os.path.exists(self._project_dir):
             shutil.rmtree(self._project_dir)
+
+        print("Removed project directory.")
 
     async def abefore_pull(self) -> None:
         """A setup method for the project.
@@ -363,3 +517,4 @@ class KonstruktorProject(BaseModel):
 
         arbitrary_types_allowed = True
         underscore_attrs_are_private = True
+        extra = "forbid"

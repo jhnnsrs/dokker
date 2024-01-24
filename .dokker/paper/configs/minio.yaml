@@ -12,33 +12,33 @@ buckets:
   - name: zarrnew
   - name: parquetnew
 users: 
-  - access_key: snappyvioletcockroach
+  - access_key: gummymaroonbulldog
     name: lok
     policies:
       - readwrite
-    secret_key: 5a1bbb00b441e743283330828d90c515
-  - access_key: nerdylimescorpion
+    secret_key: af461be56ed28a15ec7888504bb4980c
+  - access_key: muggyturquoiseopossum
     name: fluss
     policies:
       - readwrite
-    secret_key: 00dcfa0d589dae98a1f0034f836cf7fc
-  - access_key: muzzysaffronbombay
+    secret_key: 5b84af04c935d463b55365cb03068bb6
+  - access_key: shabbylilacopossum
     name: minio
     policies:
       - readwrite
-    secret_key: cd364caabfaae146a1e330c1e7f8dd4d
-  - access_key: leakysilverangelfish
+    secret_key: 48d4b1d0e5089661f0c4f0271a4602db
+  - access_key: surlyredtermite
     name: mikro
     policies:
       - readwrite
-    secret_key: 75b7d7cfdd478a677a01133cdf0c37fb
-  - access_key: flabbyfuchsiaalligator
+    secret_key: d2be4084f4d9df763981cc63febc2676
+  - access_key: wheezygoldkakapo
     name: port
     policies:
       - readwrite
-    secret_key: c1ca0364d37488a0cdb6698fd7343b76
-  - access_key: droopycornflowercoral
+    secret_key: 3e1f8d276980ea16cd195664fba26137
+  - access_key: flimsycharcoalgorilla
     name: rekuest
     policies:
       - readwrite
-    secret_key: 63edb928e3235a0459215c8e9313bc19
+    secret_key: f65a15252bf1d809605641993d97b8d9

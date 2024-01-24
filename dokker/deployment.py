@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Protocol, runtime_checkable
+from typing import Dict, Optional, List, Protocol, runtime_checkable
 from koil.composition import KoiledModel
 import asyncio
 from pathlib import Path
@@ -14,6 +14,7 @@ import aiohttp
 import certifi
 from ssl import SSLContext
 import ssl
+from typing import Any, Optional, List, Union
 from dokker.errors import NotInitializedError, NotInspectedError
 
 
@@ -78,13 +79,13 @@ class Deployment(KoiledModel):
     services: Optional[List[str]] = None
 
     health_checks: List[HealthCheck] = Field(default_factory=list)
-    initialize_on_enter: bool = True
-    inspect_on_enter: bool = True
+    initialize_on_enter: bool = False
+    inspect_on_enter: bool = False
     pull_on_enter: bool = False
-    up_on_enter: bool = True
+    up_on_enter: bool = False
     health_on_enter: bool = False
     down_on_exit: bool = False
-    stop_on_exit: bool = True
+    stop_on_exit: bool = False
     tear_down_on_exit: bool = False
     threadpool_workers: int = 3
 
@@ -96,8 +97,8 @@ class Deployment(KoiledModel):
 
     logger: Logger = Field(default_factory=VoidLogger)
 
-    _spec: ComposeSpec
-    _cli: CLI
+    _spec: ComposeSpec = None
+    _cli: CLI = None
 
     @property
     def spec(self) -> ComposeSpec:
@@ -139,6 +140,17 @@ class Deployment(KoiledModel):
         self._cli = await self.project.ainititialize()
         return self._cli
 
+    async def aretrieve_cli(self):
+        if self._cli is None:
+            if self.auto_initialize:
+                await self.ainitialize()
+            else:
+                raise NotInitializedError(
+                    "Deployment not initialized and auto_initialize is False. Call await deployment.ainitialize() first."
+                )
+
+        return self._cli
+
     async def ainspect(self) -> ComposeSpec:
         """Inspect the deployment.
 
@@ -156,16 +168,12 @@ class Deployment(KoiledModel):
         NotInitializedError
             If the deployment has not been initialized.
         """
-        if self._cli is None:
-            if self.auto_initialize:
-                await self.ainitialize()
-            else:
-                raise NotInitializedError(
-                    "Deployment not initialized and auto_initialize is False. Call await deployment.ainitialize() first."
-                )
-
-        self._spec = await self._cli.ainspect_config()
+        cli = await self.aretrieve_cli()
+        self._spec = await cli.ainspect_config()
         return self._spec
+
+    def inspect(self) -> ComposeSpec:
+        return unkoil(self.ainspect)
 
     def add_health_check(
         self,
@@ -303,13 +311,28 @@ class Deployment(KoiledModel):
         List[str]
             The logs of the up command.
         """
-
+        cli = await self.aretrieve_cli()
         logs = []
-        async for type, log in self._cli.astream_up(detach=detach):
+        async for type, log in cli.astream_up(detach=detach):
             logs.append(log)
-            self.logger.on_stop(log)
+            self.logger.on_up(log)
 
         return logs
+
+    def up(self, detach=True):
+        """Up the deployment.
+
+        Will call docker-compose up on the deployment.
+        This method is called automatically when using the deployment as a context manager and
+        if up_on_enter is True.
+
+        Returns
+        -------
+        List[str]
+            The logs of the up command.
+        """
+
+        return unkoil(self.aup, detach=detach)
 
     async def arestart(
         self,
@@ -337,12 +360,12 @@ class Deployment(KoiledModel):
         List[str]
             The logs of the restart command.
         """
-
+        cli = await self.aretrieve_cli()
         if isinstance(services, str):
             services = [services]
 
         logs = []
-        async for type, log in self._cli.astream_restart(services=services):
+        async for type, log in cli.astream_restart(services=services):
             logs.append(log)
 
         if await_health:
@@ -401,13 +424,10 @@ class Deployment(KoiledModel):
         NotInitializedError
             If the deployment has not been initialized.
         """
-        if self._cli is None:
-            raise NotInitializedError(
-                "Deployment not initialized. Call await deployment.ainitialize() first."
-            )
+        cli = await self.aretrieve_cli()
 
         logs = []
-        async for type, log in self._cli.astream_pull():
+        async for type, log in cli.astream_pull():
             logs.append(log)
             self.logger.on_pull(log)
 
@@ -425,17 +445,54 @@ class Deployment(KoiledModel):
         List[str]
             The logs of the down command.
         """
-        if self._cli is None:
-            raise NotInitializedError(
-                "Deployment not initialized. Call await deployment.ainitialize() first."
-            )
+        cli = await self.aretrieve_cli()
 
         logs = []
-        async for type, log in self._cli.astream_down():
+        async for type, log in cli.astream_down():
             logs.append(log)
             self.logger.on_down(log)
 
         return logs
+
+    async def aremove(self) -> None:
+        """Down the deployment.
+
+        Will call docker-compose down on the deployment.
+        This method is called automatically when using the deployment as a context manager and
+        if down_on_exit is True.
+
+        Returns
+        -------
+        List[str]
+            The logs of the down command.
+        """
+        cli = await self.aretrieve_cli()
+
+        return await self.project.atear_down(cli)
+
+    def remove(self) -> None:
+        """Remove the project
+
+        Returns
+        -------
+        List[str]
+            The logs of the down command.
+        """
+        return unkoil(self.aremove)
+
+    def down(self) -> List[str]:
+        """Down the deployment.
+
+        Will call docker-compose down on the deployment.
+        This method is called automatically when using the deployment as a context manager and
+        if down_on_exit is True.
+
+        Returns
+        -------
+        List[str]
+            The logs of the down command.
+        """
+        return unkoil(self.adown)
 
     async def astop(self) -> List[str]:
         """Stop the deployment.
@@ -449,17 +506,28 @@ class Deployment(KoiledModel):
         List[str]
             The logs of the stop command.
         """
-        if self._cli is None:
-            raise NotInitializedError(
-                "Deployment not initialized. Call await deployment.ainitialize() first."
-            )
+        cli = await self.aretrieve_cli()
 
         logs = []
-        async for type, log in self._cli.astream_stop():
+        async for type, log in cli.astream_stop():
             logs.append(log)
             self.logger.on_stop(log)
 
         return logs
+
+    def stop(self) -> List[str]:
+        """Stop the deployment.
+
+        Will call docker-compose stop on the deployment.
+        This method is called automatically when using the deployment as a context manager and
+        if stop_on_exit is True.
+
+        Returns
+        -------
+        List[str]
+            The logs of the stop command.
+        """
+        return unkoil(self.astop)
 
     async def aget_cli(self):
         """Get the CLI object of the deployment.
@@ -469,10 +537,7 @@ class Deployment(KoiledModel):
         This is an async method because initializing the CLI object
         is an async operation (as it might incure network calls).
         """
-        assert (
-            self._cli is not None
-        ), "Deployment not initialized. Call await deployment.ainitialize() first."
-        return self._cli
+        return await self.aretrieve_cli()
 
     async def __aenter__(self) -> "Deployment":
         """Async enter method for the deployment.

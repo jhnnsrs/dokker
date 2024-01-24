@@ -80,6 +80,20 @@ class ComposeConfigService(BaseModel):
     ports: Optional[List[ComposeServicePort]] = None
     volumes: Optional[List[ComposeServiceVolume]] = None
 
+    def get_label(self, label: str) -> str:
+        """Get the label of the service.
+
+        Returns
+        -------
+        str
+            The label of the service.
+        """
+        return self.labels.get(label)
+    
+
+    
+
+        
 
 class ComposeConfigNetwork(BaseModel):
     driver: Optional[str] = None
@@ -111,6 +125,32 @@ class ComposeSpec(BaseModel):
     ]
     configs: Any = None
     secrets: Any = None
+
+
+    def find_service(self, name: Optional[str] = None) -> ComposeConfigService:
+        """Find a service by name.
+
+        Parameters
+        ----------
+        name : str
+            The name of the service to find.
+
+        Returns
+        -------
+        ComposeConfigService
+            The service.
+        """
+        if not self.services:
+            raise Exception("No services found in the compose spec.")
+        if name:
+            service = self.services.get(name)
+            if not service:
+                raise Exception(f"No service found with name {name}.")
+            return service
+            
+
+        return self.services[list(self.services.keys())[0]]
+    
 
 
 class ComposeProject(BaseModel):
