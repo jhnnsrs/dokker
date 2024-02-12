@@ -1,0 +1,27 @@
+self:
+  name: "{{deployment_name}}"    
+minio:
+  endpoint_url: "{{"https" if request.is_secure else "http" }}://{{"minio:9000" if request.host == "lok" else request.host + ":8050"}}"
+  secure: false    
+port:
+  endpoint_url: "{{"https" if request.is_secure else "http" }}://{{"port" if request.host == "lok" else request.host + ":8070"}}/graphql"
+  healthz: "{{"https" if request.is_secure else "http" }}://{{"port" if request.host == "lok" else request.host + ":8070"}}/ht"
+  ws_endpoint_url: "{{"wss" if request.is_secure else "ws" }}://{{"port" if request.host == "lok" else request.host + ":8070"}}/graphql"    
+rekuest:
+  agent:
+    endpoint_url: "{{"wss" if request.is_secure else "ws" }}://{{"rekuest" if request.host == "lok" else request.host + ":8020"}}/agi"
+  endpoint_url: "{{"https" if request.is_secure else "http" }}://{{"rekuest" if request.host == "lok" else request.host + ":8020"}}/graphql"
+  healthz: "{{"https" if request.is_secure else "http" }}://{{"rekuest" if request.host == "lok" else request.host + ":8020"}}/ht"
+  ws_endpoint_url: "{{"wss" if request.is_secure else "ws" }}://{{"rekuest" if request.host == "lok" else request.host + ":8020"}}/graphql"    
+omero_ark:
+  endpoint_url: "{{"https" if request.is_secure else "http" }}://{{"omero_ark" if request.host == "lok" else request.host + ":8100"}}/graphql"
+  healthz: "{{"https" if request.is_secure else "http" }}://{{"omero_ark" if request.host == "lok" else request.host + ":8100"}}/ht"
+  ws_endpoint_url: "{{"wss" if request.is_secure else "ws" }}://{{"omero_ark" if request.host == "lok" else request.host + ":8100"}}/graphql"    
+kluster:
+  endpoint_url: "{{"https" if request.is_secure else "http" }}://{{"kluster" if request.host == "lok" else request.host + ":8080"}}/graphql"
+  healthz: "{{"https" if request.is_secure else "http" }}://{{"kluster" if request.host == "lok" else request.host + ":8080"}}/ht"
+  ws_endpoint_url: "{{"wss" if request.is_secure else "ws" }}://{{"kluster" if request.host == "lok" else request.host + ":8080"}}/graphql"
+  gateway_url: "{{"https" if request.is_secure else "http" }}://{{"kluster_gateway" if request.host == "lok" else request.host + ":8090"}}"    
+omero:
+  host: "{{"kluster" if request.host == "lok" else "
+  port: 8120

@@ -1,0 +1,59 @@
+buckets:
+  - name: flussmedia
+  - name: lokmedia
+  - name: lokmedia
+  - name: lokmedia
+  - name: zarr
+  - name: parquet
+  - name: mikromedia
+  - name: lokmedia
+  - name: portmedia
+  - name: mikromedianew
+  - name: zarrnew
+  - name: parquetnew
+users: 
+  - access_key: sleepycinnamoneagle
+    name: thirstyburgundyrobin
+    policies:
+      - readwrite
+    secret_key: 2c84333f3060e8569189b1eedd955b45
+  - access_key: scantyochrelemming
+    name: sicklydenimcoyote
+    policies:
+      - readwrite
+    secret_key: 0925339aa6dcca35ab02741b9ab5af0b
+  - access_key: breezysmaltwildebeest
+    name: sicklyaquabuffalo
+    policies:
+      - readwrite
+    secret_key: b4b602db6534d94253f5ef435e1fe9a6
+  - access_key: clammychocolatewildebeest
+    name: sillycorncoral
+    policies:
+      - readwrite
+    secret_key: 11633789577ae397928be2b88840370e
+  - access_key: flimsyjadesalamander
+    name: fuzzysalmonscorpion
+    policies:
+      - readwrite
+    secret_key: 3d60b9e0df5f56482fa8d86f8a388b7c
+  - access_key: foggypuceabyssinian
+    name: gummyaquamarinewhale
+    policies:
+      - readwrite
+    secret_key: 2f43b4efac64709840e69a4e30c4aa2e
+  - access_key: stuffyamaranthraccoon
+    name: fuzzypeardhole
+    policies:
+      - readwrite
+    secret_key: f7d6da3ee80b73f9eafb7c7d861d0e79
+  - access_key: hazymalachitebobcat
+    name: prettygoldenrodhound
+    policies:
+      - readwrite
+    secret_key: 1241288efff28b561302ff97e678033f
+  - access_key: cheekywheatcuttlefish
+    name: bluesyolivebarb
+    policies:
+      - readwrite
+    secret_key: f30348639e0df5fdbbf88b685e15282a

@@ -1,0 +1,110 @@
+activation_days: 7
+apps:
+  - identifier: github.io.jhnnsrs.mikroj
+    version: 0.0.1
+    scopes: 
+      - read
+      - write
+    clients:
+      - kind: website
+        token: 293j40239j4023023n09nwrree30d9n203nf03f
+        redirect_uris: 
+          - http://localhost:8090
+        tenant: admin
+        composition: generic
+  - identifier: github.io.jhnnsrs.orkestrator
+    version: 0.0.1
+    scopes: 
+      - readkluster
+      - write
+    clients:
+      - kind: website
+        token: 293j40239j4055523ffff023n09nwff4523423430d9n203nf03f
+        redirect_uris: 
+          - http://localhost:7890
+          - http://localhost:7890/callback
+          - http://127.0.0.1/callback
+          - http://127.0.0.1/
+        tenant: admin
+        composition: generic
+        public: true
+db:
+  db_name:  woolly_charcoal_cuscus_db
+  engine: django.db.backends.postgresql
+  host: db
+  password: ba17b7cf3fb13a92289705e47bd1f2a1
+  port: 5432
+  username: snoopybluerhinoceros
+deployment:
+  name: default
+django:
+  admin:
+    password: admin
+    username: admin
+  debug: false
+  hosts:
+    - "*"
+  secret_key: 0dbf25b98974106671f1bc91bbf5dec0
+groups: 
+minio:
+  access_key: 
+  buckets:
+    media: lokmedia
+  host: minio
+  port: "9000"
+  protocol: http
+  secret_key: 
+private_key:  |
+  -----BEGIN PRIVATE KEY-----
+  MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQC37EbviDqN/jYW
+  QSdVy0t6QRivQagdnrPrKVUKbeNRONwjnmgnx0PyCluNU67OYSpTvPhosdeIZm16
+  oOX+ovH2aKiNxy52JyysOhw9TT1XHB9E7+V6GOSpNoNUeEEMm/7CzEbWEH8+X3i6
+  gdYYqh+pRmtZeYkcWNNzwaRhmWgFR2Xcb7DeRSNGqNo+l4FIZl1TUudfTh0OOcDA
+  tGptSCorj8gn+F3BQDYdVuR9XuvifDaRNtYJZWdNEizuYiA5Y5wQlI6HzIya5pvr
+  Fy/WOwNAeyE0G8s07uTPWyGD4k2A8xiQv5Fuq2u61Dlg+C2DjztLFM8zwZxMr+XS
+  dZQGNyL/AgMBAAECggEAB/dJWT2Ov7Cneg5HXF1qPvjLz2dqFyJVC5XmM4Xv5wgt
+  7LMDMtncFQMi1PuvYgvuT+Mq5SnyulspWbrXS1CWZ0RALKfYWNC4jBsWNwd95SR4
+  LD2xtDiYysVsKb/tnVSyU5CSbtoXEMYEzhsqgTX5GhVNN/peGGa2fdiAvKNu0G+k
+  t0bdM2cqD8rSg4eBrN+TqqSDIZWhNjyk1XuvxX2VJDTbStxaulm6r+fHD4CGeV2O
+  i2SxtAwWHvCL13VFz/ti8czwjRFpcqT+ZcODIH7funkSkxINLYQc0aTvBpC9O3Mp
+  UZZaR+I2wA5y/7ao8RZvcRJzaXzHS+LWICLaVO7ucQKBgQD7WzVqWXFEt2nDaTCX
+  ogaq2luGVEn/FSFk6nKmIgmkI65gyMPnVONFHWBe2Ybe748l9g20g7cWS4Ukzyz0
+  YLN5YnKHbFgO7IUOW5nha6fB0IDboLPjQlG5w6flH9uionsvGwCZrbgmsG6khNFX
+  dTfvapH3ldTjEdVIX7Yr/sdeUQKBgQC7UiRcl0iIBxKCK9iIHzQh7PpJFtoyo2JO
+  kVnehdW2b5jv/OLhDX0XF6QArU5Vvaq9RsSP5CCR8H1+cuRtna/TkWsYBFM1wDLU
+  4FoB5AOQroqRrpYa8XXcYNC2U1zFRvYbREMbFhazoeU9AHAww2fMWY3BqVyIG4Bh
+  Ypsbv7aITwKBgQDRukHwkd7T4mIqPavg6b28c2Poyo3PfDcX+BNfkYkP3wHSGdJ0
+  RD053xAZNFG31JVRrGO1Gi37OVpH42H0Kne2MbG0U2+KTEmdOEtGbshUDIBoQUe3
+  uQ9t+9YsdQ+TPRWhsVsn326HQbGgLn5qBhF9ACP5PJicOrYGpG3heb2qcQKBgQCY
+  R12R+9YV5xHvym8bsaoyzjBljHNTaSj40Aar9EbZKX290uoppEqFpE1J05lz8F1F
+  w6r1grHLkiKi0gnK5r7SEkxqWNHAR3/LOJtTICaZzpqNdc1HF/YFcpsZLUmkglx9
+  rA+VjG5mF32BCsMpkSDnqgGoZuL3Lsw93uhTNZXQ1wKBgQDTWX2Y3q+ny1h/XEbh
+  Ql2gXzCklgPwkBz/2BrEvCRqdhIm46mKrRHYpTOlgt7y8lZO2DDlJyPpoHRTNMuB
+  6x7pU9pEyghiToLPbBAFJgn5SCbCr2cx76N21eTlo5osJjXzfLcXgDb/FdzefGj4
+  d+T2BbC77nJIRjZ60ARWaa3wAA==
+  -----END PRIVATE KEY-----
+
+public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC37EbviDqN/jYWQSdVy0t6QRivQagdnrPrKVUKbeNRONwjnmgnx0PyCluNU67OYSpTvPhosdeIZm16oOX+ovH2aKiNxy52JyysOhw9TT1XHB9E7+V6GOSpNoNUeEEMm/7CzEbWEH8+X3i6gdYYqh+pRmtZeYkcWNNzwaRhmWgFR2Xcb7DeRSNGqNo+l4FIZl1TUudfTh0OOcDAtGptSCorj8gn+F3BQDYdVuR9XuvifDaRNtYJZWdNEizuYiA5Y5wQlI6HzIya5pvrFy/WOwNAeyE0G8s07uTPWyGD4k2A8xiQv5Fuq2u61Dlg+C2DjztLFM8zwZxMr+XSdZQGNyL/
+lok:
+  issuer: lok
+  key_type: RS256
+  public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC37EbviDqN/jYWQSdVy0t6QRivQagdnrPrKVUKbeNRONwjnmgnx0PyCluNU67OYSpTvPhosdeIZm16oOX+ovH2aKiNxy52JyysOhw9TT1XHB9E7+V6GOSpNoNUeEEMm/7CzEbWEH8+X3i6gdYYqh+pRmtZeYkcWNNzwaRhmWgFR2Xcb7DeRSNGqNo+l4FIZl1TUudfTh0OOcDAtGptSCorj8gn+F3BQDYdVuR9XuvifDaRNtYJZWdNEizuYiA5Y5wQlI6HzIya5pvrFy/WOwNAeyE0G8s07uTPWyGD4k2A8xiQv5Fuq2u61Dlg+C2DjztLFM8zwZxMr+XSdZQGNyL/
+redis:
+  host: redis
+  port: 6379
+scopes:
+  can_assign: Can Assign Nodes
+  can_create: Can Create Nodes
+  can_create_identifier: Can create new identifier for the platform
+  can_forward_bounce:
+    Can reserve and assign to Nodes mimicking other Users (only
+    backend and admin)
+  can_provide: Can Provide Nodes
+  can_template: Can Template Nodes
+  introspection: Introspect the Token scope
+  provider: Can act as a provider
+  read: Reading all of your Data
+  write: Writing to all of your Data
+  read_starred: Reading all of your shared Data
+token_expire_seconds: 604800
+users: 

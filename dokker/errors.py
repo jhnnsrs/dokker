@@ -13,3 +13,8 @@ class NotInspectedError(DokkerError):
 class NotInspectableError(DokkerError):
     """Raised when an object is not inspectable."""
 
+
+
+
+class HealthError(DokkerError):
+    "Raised when a container is unhealthy."

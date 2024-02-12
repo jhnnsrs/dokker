@@ -1,7 +1,9 @@
-from .deployment import Deployment, HealthCheck
+from .deployment import Deployment
+
 from typing import List, Optional, TYPE_CHECKING, Union
 from dokker.projects.copy import CopyPathProject
 from dokker.projects.local import LocalProject
+from dokker.projects.health_check import HealthCheck
 from dokker.types import ValidPath
 
 if TYPE_CHECKING:
@@ -9,7 +11,7 @@ if TYPE_CHECKING:
 
 
 def mirror(
-      local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = None  
+    local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = None
 ) -> Deployment:
     """Creates a Mirro Deployment
 
@@ -31,8 +33,8 @@ def mirror(
     """
     if health_checks is None:
         health_checks = []
-    
-    project =  CopyPathProject(project_path=local_path)
+
+    project = CopyPathProject(project_path=local_path)
     deployment = Deployment(
         project=project,
         health_checks=health_checks,
@@ -40,14 +42,13 @@ def mirror(
 
     deployment.pull_on_enter = False
     deployment.down_on_exit = False
-    deployment.stop_on_exit = False
+    deployment.stop_on_exit = True
 
     return deployment
 
 
-
 def cookiecutter(
-        repo_url: str, health_checks: Optional[List[HealthCheck]] = None
+    repo_url: str, health_checks: Optional[List[HealthCheck]] = None
 ) -> Deployment:
     """Generates a cookiecutter deployemnt.
 
@@ -70,7 +71,7 @@ def cookiecutter(
     if health_checks is None:
         health_checks = []
 
-    project =  CookieCutterProject(repo_url=repo_url)
+    project = CookieCutterProject(repo_url=repo_url)
     deployment = Deployment(
         project=project,
         health_checks=health_checks,
@@ -84,7 +85,8 @@ def cookiecutter(
 
 
 def local(
-    docker_compose_file: Union[ValidPath, List[ValidPath]], health_checks: Optional[List[HealthCheck]] = None
+    docker_compose_file: Union[ValidPath, List[ValidPath]],
+    health_checks: Optional[List[HealthCheck]] = None,
 ) -> Deployment:
     """Creates a local deployment.
 
@@ -97,7 +99,7 @@ def local(
 
     if health_checks is None:
         health_checks = []
-        
+
     project = LocalProject(
         compose_files=docker_compose_file,
     )
@@ -116,7 +118,8 @@ def local(
 
 
 def monitoring(
-    docker_compose_file: Union[ValidPath, List[ValidPath]], health_checks: Optional[List[HealthCheck]] = None
+    docker_compose_file: Union[ValidPath, List[ValidPath]],
+    health_checks: Optional[List[HealthCheck]] = None,
 ) -> Deployment:
     """Generates a monitoring deployment.
 
@@ -158,7 +161,8 @@ def monitoring(
 
 
 def testing(
-    docker_compose_file: Union[ValidPath, List[ValidPath]], health_checks: Optional[List[HealthCheck]] = None
+    docker_compose_file: Union[ValidPath, List[ValidPath]],
+    health_checks: Optional[List[HealthCheck]] = None,
 ) -> Deployment:
     """Generates a testing deployment.
 

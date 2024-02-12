@@ -1,0 +1,30 @@
+db:
+  db_name: gamy_indigo_meerkat_db
+  engine: django.db.backends.postgresql
+  host: db
+  password: ba17b7cf3fb13a92289705e47bd1f2a1
+  port: 5432
+  username: snoopybluerhinoceros
+django:
+  admin:
+    password: admin
+    username: admin
+  debug: false
+  hosts:
+  - '*'
+  secret_key: bda5e4578374adf46aa5bc79a16faa2b
+lok:
+  issuer: lok
+  key_type: RS256
+  public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC37EbviDqN/jYWQSdVy0t6QRivQagdnrPrKVUKbeNRONwjnmgnx0PyCluNU67OYSpTvPhosdeIZm16oOX+ovH2aKiNxy52JyysOhw9TT1XHB9E7+V6GOSpNoNUeEEMm/7CzEbWEH8+X3i6gdYYqh+pRmtZeYkcWNNzwaRhmWgFR2Xcb7DeRSNGqNo+l4FIZl1TUudfTh0OOcDAtGptSCorj8gn+F3BQDYdVuR9XuvifDaRNtYJZWdNEizuYiA5Y5wQlI6HzIya5pvrFy/WOwNAeyE0G8s07uTPWyGD4k2A8xiQv5Fuq2u61Dlg+C2DjztLFM8zwZxMr+XSdZQGNyL/
+minio:
+  access_key: clammychocolatewildebeest
+  buckets:
+   media: flussmedia
+  host: minio
+  port: '9000'
+  protocol: http
+  secret_key: 11633789577ae397928be2b88840370e
+redis:
+  host: redis
+  port: 6379

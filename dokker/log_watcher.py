@@ -2,8 +2,9 @@ from koil.composition import KoiledModel
 import asyncio
 from typing import Optional, List, Callable, Union
 from dokker.cli import CLIBearer
-
-
+from dokker.types import Logger
+from pydantic import Field
+from dokker.loggers.logging import LoggingLogger
 try:
     from rich import panel
 
@@ -40,8 +41,10 @@ class LogWatcher(KoiledModel):
     follow: bool = True
     no_log_prefix: bool = False
     timestamps: bool = False
+    live: bool = False
     since: Optional[str] = None
     until: Optional[str] = None
+    logger: Logger = Field(default_factory=LoggingLogger)
     stream: bool = True
     services: Union[str, List[str]] = []
     wait_for_first_log: bool = True
@@ -65,19 +68,35 @@ class LogWatcher(KoiledModel):
 
     async def awatch_logs(self):
         cli = await self.cli_bearer.aget_cli()
-        async for log in cli.astream_docker_logs(
-            tail=self.tail,
-            follow=self.follow,
-            no_log_prefix=self.no_log_prefix,
-            timestamps=self.timestamps,
-            since=self.since,
-            until=self.until,
-            services=self.services,
-        ):
-            if self._just_one_log is not None and not self._just_one_log.done():
-                self._just_one_log.set_result(True)
-            await self.aon_logs(log)
-            self.collected_logs.append(log)
+
+        if self.live:
+            async with self.logger.status("Watching logs") as helper:
+                async for log in cli.astream_docker_logs(
+                    tail=self.tail,
+                    follow=self.follow,
+                    no_log_prefix=self.no_log_prefix,
+                    timestamps=self.timestamps,
+                    since=self.since,
+                    until=self.until,
+                    services=self.services,
+                ):
+                    if self._just_one_log is not None and not self._just_one_log.done():
+                        self._just_one_log.set_result(True)
+                    await helper.alog(log)
+                    self.collected_logs.append(log)
+        else:
+            async for log in cli.astream_docker_logs(
+                    tail=self.tail,
+                    follow=self.follow,
+                    no_log_prefix=self.no_log_prefix,
+                    timestamps=self.timestamps,
+                    since=self.since,
+                    until=self.until,
+                    services=self.services,
+                ):
+                    if self._just_one_log is not None and not self._just_one_log.done():
+                        self._just_one_log.set_result(True)
+                    self.collected_logs.append(log)
 
         
 

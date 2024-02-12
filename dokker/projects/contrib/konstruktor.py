@@ -15,6 +15,7 @@ from typing import Dict, Any, Protocol, runtime_checkable
 from aioconsole import ainput
 from enum import Enum
 from pydantic import validator
+from dokker.command import astream_command
 
 
 class InitError(DokkerError):
@@ -25,11 +26,10 @@ class InitError(DokkerError):
 
 class BasicType(str, Enum):
     STR = "str"
-    INT = "int"
+    INT = "in self.t"
     FLOAT = "float"
     BOOL = "bool"
     LIST = "list"
-
 
 
 def set_nested_key_in_dict(d, key, value):
@@ -42,13 +42,13 @@ def set_nested_key_in_dict(d, key, value):
         d[key] = {}
     set_nested_key_in_dict(d[key], rest, value)
 
+
 def get_nested_key_in_dict(d, key):
     if "." not in key:
         return d.get(key, None)
 
     key, rest = key.split(".", 1)
     return get_nested_key_in_dict(d.get(key, {}), rest)
-
 
 
 class BasicField(BaseModel):
@@ -96,7 +96,6 @@ class BasicField(BaseModel):
         if value == "" and default_value is not None:
             value = default_value
         else:
-
             if self.type == BasicType.INT:
                 value = int(value)
             elif self.type == BasicType.FLOAT:
@@ -109,16 +108,10 @@ class BasicField(BaseModel):
                 value = str(value)
             else:
                 raise Exception("Unknown type")
-        
-
-
 
         new_defaults = {**default}
         set_nested_key_in_dict(new_defaults, self.key, value)
         return new_defaults
-
-    
-    
 
 
 class BasicForm(BaseModel):
@@ -238,7 +231,7 @@ class KonstruktorProject(BaseModel):
     base_dir: str = Field(default_factory=lambda: os.path.join(os.getcwd(), ".dokker"))
     compose_files: list = Field(default_factory=lambda: ["docker-compose.yml"])
     extra_context: dict = Field(default_factory=lambda: {})
-    error_if_exists: bool = True
+    error_if_exists: bool = False
     reinit_if_exists: bool = False
     ssl_context: SSLContext = Field(
         default_factory=lambda: ssl.create_default_context(cafile=certifi.where()),
@@ -267,81 +260,10 @@ class KonstruktorProject(BaseModel):
         else:
             raise ValueError("Invalid repo type")
 
-    async def _astread_stream(
-        self,
-        stream: asyncio.StreamReader,
-        queue: asyncio.Queue,
-        name: str,
-    ) -> None:
-        async for line in stream:
-            await queue.put((name, line.decode("utf-8").strip()))
-
-        await queue.put(None)
-
-    async def astream_command(self, command: List[str]) -> LogStream:
-        # Create the subprocess using asyncio's subprocess
-
-        full_cmd = " ".join(map(str, command))
-
-        proc = await asyncio.create_subprocess_shell(
-            full_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        if proc.stdout is None or proc.stderr is None:
-            raise InitError("Could not create the subprocess.")
-
-        queue = (
-            asyncio.Queue()
-        )  # type: asyncio.Queue[tuple[str, str]] # cannot use type annotation because of python 3.8
-        # Create and start tasks for reading each stream
-
-        try:
-            readers = [
-                asyncio.create_task(self._astread_stream(proc.stdout, queue, "STDOUT")),
-                asyncio.create_task(self._astread_stream(proc.stderr, queue, "STDERR")),
-            ]
-
-            # Track the number of readers that are finished
-            finished_readers = 0
-            while finished_readers < len(readers):
-                line = await queue.get()
-                if line is None:
-                    finished_readers += 1  # One reader has finished
-                    continue
-                yield line
-
-            # Cleanup: cancel any remaining reader tasks
-            for reader in readers:
-                reader.cancel()
-                try:
-                    await reader
-                except asyncio.CancelledError:
-                    pass
-
-        except asyncio.CancelledError:
-            # Handle cancellation request
-            proc.kill()
-            await proc.wait()  # Wait for the subprocess to exit after receiving SIGINT
-
-            # Cleanup: cancel any remaining reader tasks
-            for reader in readers:
-                reader.cancel()
-                try:
-                    await reader
-                except asyncio.CancelledError:
-                    pass
-
-            raise
-
-        except Exception as e:
-            raise e
-
     async def fetch_image(self, image: str) -> List[str]:
         logs: List[str] = []
 
-        async for type, log in self.astream_command(["docker", "pull", image]):
+        async for type, log in astream_command(["docker", "pull", image]):
             logs.append(log)
 
         return logs
@@ -428,7 +350,7 @@ class KonstruktorProject(BaseModel):
 
         cmd += [channel.builder]
 
-        async for type, log in self.astream_command(cmd):
+        async for type, log in astream_command(cmd):
             logs.append(log)
 
         compose_file = os.path.join(self._project_dir, "docker-compose.yaml")

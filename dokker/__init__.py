@@ -6,7 +6,7 @@ sensible defaults for common docker-compose workflows.
 """
 
 
-from .deployment import Deployment, HealthCheck, Logger
+from .deployment import Deployment, Logger
 from .builders import (
     mirror,
     testing,

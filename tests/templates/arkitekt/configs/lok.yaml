@@ -1,20 +1,5 @@
 activation_days: 7
 apps:
-  - client_id: gdrgdhgnjsdfsefs
-    client_secret: soinfosienesfseff3298zhiub9328ruoisnefoisneofinsef
-    client_type: public
-    grant_type: authorization-code
-    identifier: github.io.jhnnsrs.arkitekt
-    name: Arkitekt Test Client
-    redirect_uris:
-      - http://127.0.0.1/
-    scopes:
-      - read
-      - write
-      - openid
-    tenant: admin
-    version: latest
-    token: 293j40239j4023023n09nj09n49nin3w30d9n203nf03f
   - client_id: snfoinosinefsef
     client_secret: 9noinfpuisenfpsiuenfpiosenfiusef
     client_type: public
@@ -24,14 +9,14 @@ apps:
     redirect_uris:
       - http://127.0.0.1/
       - http://127.0.0.1/callback
-      - http://localhost:8010/callback
-      - http://localhost:8010/
+      - http://localhost:{{setup.orkestrator.port}}/callback
+      - http://localhost:{{setup.orkestrator.port}}/
     scopes:
       - read
       - write
       - openid
-    tenant: admin
-    version: latest
+    tenant: {{setup.admin_username}}
+    version: "0.0.1"
     token: 293j40239j4023023n039j30sdofins3n09nw30d9n203nf03fsdfseoinsoeinfosein
   - client_id: soinfosienfsfosefghsegfisnefoisneofinsef
     client_secret: soinfoefsefssdfienfoisnefoisneofinsef
@@ -47,7 +32,7 @@ apps:
       - read
       - write
       - openid
-    tenant: admin
+    tenant: {{setup.admin_username}}
     version: latest
     token: 293j40239j4023023n09nw3oinfinoifnsoifnosineoifnsef0d9n203nf03f
   - client_id: soinfosienfoaswdasdasdisnefoisneofinsef
@@ -62,7 +47,7 @@ apps:
       - read
       - write
       - openid
-    tenant: admin
+    tenant: {{setup.admin_username}}
     version: latest
     token: 304n03940p39m4f09o304fo9m0394mf039n4f039n4f093n4f
   - client_id: soinfosienfoissgsegsegtbsynefoisneofinsef
@@ -77,7 +62,7 @@ apps:
       - read
       - write
       - openid
-    tenant: admin
+    tenant: {{setup.admin_username}}
     version: latest
     token: 093j4093n4f09m3094mf09m309mf09mf094n09enf09n23
   - client_id: sdfsfshrhsdbse4gsrgs4rgdrgsrdgedrg
@@ -91,7 +76,7 @@ apps:
     scopes:
       - read
       - openid
-    tenant: admin
+    tenant: {{setup.admin_username}}
     version: v0.0.1
     token: 0394mr039m4f093m40f90934nf09n309m2039d029n3f092n3f0293fn
   - client_id: fsefgsdfoina9oiwendaosinaswdaw
@@ -105,7 +90,7 @@ apps:
     scopes:
       - read
       - openid
-    tenant: admin
+    tenant: {{setup.admin_username}}
     version: latest
     token: 2039rn0293md02m3f0pm2p30omr02oin3f0ß92m30f9n2039fn2039fn
   - client_id: fsdfsefsesef234234e2fd3dasdasd
@@ -119,70 +104,40 @@ apps:
     scopes:
       - read
       - openid
-    tenant: admin
+    tenant: {{setup.admin_username}}
     version: "0.0.1"
     token: 4234234234u9381892huin9s8nef98n398nw398n29384n234
-
-
 db:
-  db_name: lok_db
+  db_name:  {{setup.lok.db_name}}
   engine: django.db.backends.postgresql
   host: db
-  password: 44a93803b01ccf167ce339ad2418b9b3
+  password: {{setup.postgres_password}}
   port: 5432
-  username: flimsyazuresetter
+  username: {{setup.postgres_user}}
 deployment:
-  name: paper
+  name: {{setup.name}}
 django:
   admin:
-    password: admin
-    username: admin
+    password: {{setup.admin_password}}
+    username: {{setup.admin_username}}
   debug: false
   hosts:
     - "*"
-  secret_key: 1231d4362c4d29b5ef4df760dfbc69ba
-groups: 
-  - name: mygroup
-    description: mygroup
+  secret_key: {{setup.lok.django_secret_key}}
+groups: {% for group in setup.groups %}
+  - name: {{ group.name }}
+    description: {{ group.description }}{% endfor %}
 minio:
-  access_key: shaggyviridiancat
+  access_key: {{setup.lok.bucket.access_key}}
   buckets:
     media: lokmedia
   host: minio
   port: "9000"
   protocol: http
-  secret_key: 94c770e06665098a83e4d81155ecdd3b
+  secret_key: {{setup.lok.bucket.secret_key}}
 private_key:  |
-  -----BEGIN PRIVATE KEY-----
-  MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDZkdM9SuAqu/wN
-  DFrfHmXv7ddH9YuOwJ9/eLXXDhtn2Izr+lDrcZb+r8Arx6GqeyFhUZOadr7xre+P
-  orETL5aFZNq0sR9ysUiGYguEmyzlgeL/AEuj/Qg0IOK3cpQQ38LMRSZ/WuFcP/3p
-  1CkB+U6DR1KORt1RvpnWXj3bfVVRvgALV7zdlB1LR0lyPTtvAnWAB3QTlIV8UU4C
-  Ee0VfZO1A947r9UwahgmTpZxGKNuZ65hPL3a4wa2/SE4OLiWxnkzLtcErSLvCI6n
-  g00vlCi5pXG7IXX0QzmzLwuu2YouhqU7LAwmNNTLUcTP7a/hAd7dzP3c5jhkOhP/
-  2WGqNfdbAgMBAAECggEABS69LvlAEb1q1EdoLIOJFE8kEP74I2YoH11uvMch6jY8
-  VR48qlRsy7BORudc6WEkJb9PfeY4cixyuYcteDJqql0BUnXi++LdpdecC4RgiL0+
-  p6oklOXhANBvuahJt/b1cEUbozVt4GTk8e/aR4ylaXcjBWgmu0Brt3ihceoiKCa3
-  BW0nFT8EWqjiUfTEWT0kKbWeLwYpuDAXd+a/8b1G4t0wB3+T+AqKNhdOtGLOgYKV
-  2z9ccr5Leyk6sm9zVWw9k/dSydCQhLPm+N+E0fKB/7Tta8rTDAkTolxrt4mcCFP6
-  HECACvwDgmtineDOXszN7M9xLV5BdsAxLP3brblbkQKBgQDsdXTc1Sif67mJ6JQs
-  GgJ9H5WGQYeLK52gL4TCK+s+/r4WyLqqxD0+5Rd+2OGIzpAkDwG9cOr88/fq++v0
-  Ak1Zch+3jCGOGUG8a03bGU3hxHXi9lB4S6UlT76Hw0KIlfDpniqs+MzeKsoTV7Pf
-  mRSfL6AtLySMtWhap7BCVRGEpwKBgQDrjL9VkEGvKyqvlZ333OZzOf+9UjsQO1eA
-  ouxgp+w9AIceGm7uNgyhLW8CJP7D6kIgKKIuKsRmhW1rtqU/rmE8lO032H3vJbuT
-  5xxZ+kCHPc6fA08x9Oe+xU/QkCjqLK5CQ0J6/mM3yTKUJVf7kJ3evKL/C4Dsfh4B
-  9b7SlTfqLQKBgGhLHjJQ6kwvAnTrWn9hMXvStHa07H3bzPhcPSgPiwEMBvexrXOo
-  foMBNK3EJyXaRgVBgTj3Vw4e5ViFqPrFESzEg2zHp/0u8qmSgpKCxLExn/VtQuzs
-  IHkmhRkIbI4l5E6GbrhAPMw4/0wswK98q3XS4clMI8jUMqTZlYqMTt+9AoGAKdfU
-  3WRE5tMqQAq6Bx/sqCdzcLQ83cNM5gMLLphl9Og1GHnlntdnIvKpN55Oy4q/uGq/
-  dKgQP44QRAQsEsXtbA+gnD0PEf6H9dwmQy2bbOrj24eA+ATjbhYq+YfCXOcXBZph
-  Iuwxv+Uz4PFJUdz8zmaAJgJrIpe8yOhYv5vWVPkCgYA97Xh1QqFoTmX+IBaax5aB
-  HZluLIIOPlqCeKKohaxG5kJLD4/tB1YQIK/M0TxFIwznU76T3PE63NvO00cUQaVG
-  mH40T7ohV9TrMmPLmOKbQdr1gRxvLYQMc23laf7e/BfZfjytxNK1hrBorO0GAEfU
-  dNIthZksI6s6BvXEJqmtWw==
-  -----END PRIVATE KEY-----
-
-public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDZkdM9SuAqu/wNDFrfHmXv7ddH9YuOwJ9/eLXXDhtn2Izr+lDrcZb+r8Arx6GqeyFhUZOadr7xre+PorETL5aFZNq0sR9ysUiGYguEmyzlgeL/AEuj/Qg0IOK3cpQQ38LMRSZ/WuFcP/3p1CkB+U6DR1KORt1RvpnWXj3bfVVRvgALV7zdlB1LR0lyPTtvAnWAB3QTlIV8UU4CEe0VfZO1A947r9UwahgmTpZxGKNuZ65hPL3a4wa2/SE4OLiWxnkzLtcErSLvCI6ng00vlCi5pXG7IXX0QzmzLwuu2YouhqU7LAwmNNTLUcTP7a/hAd7dzP3c5jhkOhP/2WGqNfdb
+  {{ setup.jwt_key_pair.private_key|indent(2) }}
+public_key: {{setup.jwt_key_pair.public_key}}
 redis:
   host: redis
   port: 6379
@@ -201,8 +156,9 @@ scopes:
   write: Writing to all of your Data
   read_starred: Reading all of your shared Data
 token_expire_seconds: 604800
-users: 
-  - username: demo
-    password: demo
-    groups: 
-      - mygroup 
+users: {% for user in setup.users %}
+  - username: {{ user.username }}
+    password: {{ user.password }}
+    groups: {% for group in user.groups %}
+      - {{group}} {% endfor %}{% endfor %}
+

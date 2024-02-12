@@ -9,7 +9,8 @@ async def test_konstruktor():
 
     project = KonstruktorProject(
         channel="paper",
-        repo="https://raw.githubusercontent.com/jhnnsrs/konstruktor/master/repo/channels.json"
+        repo="https://raw.githubusercontent.com/jhnnsrs/konstruktor/master/repo/channels.json",
+        reinit_if_exists=True
     )
 
     await project.ainititialize()

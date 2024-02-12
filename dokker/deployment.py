@@ -16,69 +16,27 @@ from ssl import SSLContext
 import ssl
 from typing import Any, Optional, List, Union
 from dokker.errors import NotInitializedError, NotInspectedError
-
-
-ValidPath = Union[str, Path]
-
+from pydantic import validator
+from dokker.loggers.logging import LoggingLogger
+from dokker.types import ValidPath, LogHelper, Logger
+from typing import TypeVar, Generic
 
 class HealthError(Exception):
     pass
 
 
-class HealthCheck(BaseModel):
-    url: str
-    service: str
-    max_retries: int = 3
-    timeout: int = 10
-    error_with_logs: bool = True
-    headers: Optional[dict] = Field(
-        default_factory=lambda: {"Content-Type": "application/json"}
-    )
-    ssl_context: SSLContext = Field(
-        default_factory=lambda: ssl.create_default_context(cafile=certifi.where()),
-        description="SSL Context to use for the request",
-    )
-
-    async def acheck(self):
-        async with aiohttp.ClientSession(
-            headers=self.headers,
-            connector=aiohttp.TCPConnector(ssl=self.ssl_context),
-        ) as session:
-            # get json from endpoint
-            async with session.get(self.url) as resp:
-                assert resp.status == 200
-                return await resp.text()
-
-    class Config:
-        arbitrary_types_allowed = True
-        underscore_attrs_are_private = True
 
 
-@runtime_checkable
-class Logger(Protocol):
-    def on_pull(self, log: str):
-        ...
-
-    def on_up(self, log: str):
-        ...
-
-    def on_stop(self, log: str):
-        ...
-
-    def on_logs(self, log: str):
-        ...
-
-    def on_down(self, log: str):
-        ...
+T = TypeVar("T", bound="BaseModel")
 
 
-class Deployment(KoiledModel):
+
+class Deployment(KoiledModel, Generic[T]):
     """A deployment is a set of services that are deployed together."""
 
     project: Project = Field(default_factory=Project)
     services: Optional[List[str]] = None
 
-    health_checks: List[HealthCheck] = Field(default_factory=list)
     initialize_on_enter: bool = False
     inspect_on_enter: bool = False
     pull_on_enter: bool = False
@@ -87,7 +45,6 @@ class Deployment(KoiledModel):
     down_on_exit: bool = False
     stop_on_exit: bool = False
     tear_down_on_exit: bool = False
-    threadpool_workers: int = 3
 
     pull_logs: Optional[List[str]] = None
     up_logs: Optional[List[str]] = None
@@ -95,38 +52,17 @@ class Deployment(KoiledModel):
 
     auto_initialize: bool = True
 
-    logger: Logger = Field(default_factory=VoidLogger)
+    logger: Logger = Field(default_factory=LoggingLogger)
+    log_to_stdout: bool = False
+
+    
 
     _spec: ComposeSpec = None
     _cli: CLI = None
 
-    @property
-    def spec(self) -> ComposeSpec:
-        """A property that returns the compose spec of the deployment.
 
-        THis compose spec can be used to retrieve information about the deployment.
-        by inspecting the containers, networks, volumes, etc.
 
-        In the future, this spec will be used to
-        retrieve information about the deployment.
-
-        Returns
-        -------
-        ComposeSpec
-            The compose spec.
-
-        Raises
-        ------
-        NotInspectedError
-            If the deployment has not been inspected.
-        """
-        if self._spec is None:
-            raise NotInspectedError(
-                "Deployment not inspected. Call await deployment.ainspect() first."
-            )
-        return self._spec
-
-    async def ainitialize(self) -> "CLI":
+    async def ainitialize(self, **kwargs) -> "CLI":
         """Initialize the deployment.
 
         Will initialize the deployment through its project and return the CLI object.
@@ -137,19 +73,21 @@ class Deployment(KoiledModel):
         CLI
            The CLI object.
         """
-        self._cli = await self.project.ainititialize()
+        async with self.logger.status("Initializing") as helper:
+            self._cli = await self.project.ainititialize(helper,  **kwargs)
         return self._cli
+
+    async def aget_config(self) -> T:
+        return await self.project.aget_config(self.logger)
+    
+    def get_config(self) -> T:
+        return unkoil(self.aget_config)
+    
+    def initialize(self,  **kwargs) -> "CLI":
+        return unkoil(self.ainitialize,  **kwargs)
 
     async def aretrieve_cli(self):
-        if self._cli is None:
-            if self.auto_initialize:
-                await self.ainitialize()
-            else:
-                raise NotInitializedError(
-                    "Deployment not initialized and auto_initialize is False. Call await deployment.ainitialize() first."
-                )
-
-        return self._cli
+        return await self.project.aget_cli(self.logger)
 
     async def ainspect(self) -> ComposeSpec:
         """Inspect the deployment.
@@ -175,88 +113,28 @@ class Deployment(KoiledModel):
     def inspect(self) -> ComposeSpec:
         return unkoil(self.ainspect)
 
-    def add_health_check(
-        self,
-        url: str,
-        service: str,
-        max_retries: int = 3,
-        timeout: int = 10,
-        error_with_logs: bool = True,
-    ) -> "HealthCheck":
-        """Add a health check to the deployment.
 
-        Parameters
-        ----------
-        url : str
-            The url to check.
-        service : str
-            The service this health check is for.
-        max_retries : int, optional
-            The maximum retries before the healtch checks fails, by default 3
-        timeout : int, optional
-            The timeout between retries, by default 10
-        error_with_logs : bool, optional
-            Should we error with the logs of the service (will inspect container logs of the service), by default True
+    async def acheck_health(self, services: Optional[List[str]] = None):
+        
+        async with self.logger.status("Health checks") as helper:
+            health_checks = await self.project.aget_health_checks()
 
-        Returns
-        -------
-        HealthCheck
-            The health check object.
-        """
+            if services is not None:
+                health_checks = [
+                    check for check in health_checks if check.service in services
+                ]  # we check all services
 
-        check = HealthCheck(
-            url=url,
-            service=service,
-            max_retries=max_retries,
-            timeout=timeout,
-            error_with_logs=error_with_logs,
-        )
+            return await asyncio.gather(
+                *[
+                    check.acheck(helper)
+                    for check in health_checks
+                ]
+            )
 
-        self.health_checks.append(check)
-        return check
+    def check_health(self, services: Optional[List[str]] = None):
+        return unkoil(self.acheck_health, services=services)
 
-    async def acheck_healthz(self, check: HealthCheck, retry: int = 0):
-        try:
-            await check.acheck()
-        except Exception as e:
-            if retry < check.max_retries:
-                await asyncio.sleep(check.timeout)
-                await self.acheck_healthz(check, retry=retry + 1)
-            else:
-                if not check.error_with_logs:
-                    raise HealthError(
-                        f"Health check failed after {check.max_retries} retries. Logs are disabled."
-                    ) from e
-
-                logs = []
-
-                async for std, i in self._cli.astream_docker_logs(
-                    services=[check.service]
-                ):
-                    logs.append(i)
-
-                raise HealthError(
-                    f"Health check failed after {check.max_retries} retries. Logs:\n"
-                    + "\n".join(logs)
-                ) from e
-
-    async def await_for_healthz(
-        self, timeout: int = 3, retry: int = 0, services: Optional[List[str]] = None
-    ):
-        if services is None:
-            services = [
-                check.service for check in self.health_checks
-            ]  # we check all services
-
-        return await asyncio.gather(
-            *[
-                self.acheck_healthz(check)
-                for check in self.health_checks
-                if check.service in services
-            ]
-        )
-
-    def logswatcher(self, service_names: Union[List[str], str], **kwargs):
+    def watch_logs(self, service_names: Union[List[str], str], **kwargs):
         """Get a logswatcher for a service.
 
         A logswatcher is an object that can be used to watch the logs of a service, as
@@ -313,9 +191,10 @@ class Deployment(KoiledModel):
         """
         cli = await self.aretrieve_cli()
         logs = []
-        async for type, log in cli.astream_up(detach=detach):
-            logs.append(log)
-            self.logger.on_up(log)
+        async with self.logger.status("Up") as helper:
+            async for type, log in cli.astream_up(detach=detach):
+                logs.append(log)
+                await helper.alog(log)
 
         return logs
 
@@ -365,8 +244,9 @@ class Deployment(KoiledModel):
             services = [services]
 
         logs = []
-        async for type, log in cli.astream_restart(services=services):
-            logs.append(log)
+        async with self.logger.status("Restarting") as helper:
+            async for type, log in cli.astream_restart(services=services):
+                await helper.alog(log)
 
         if await_health:
             await asyncio.sleep(await_health_timeout)
@@ -427,11 +307,15 @@ class Deployment(KoiledModel):
         cli = await self.aretrieve_cli()
 
         logs = []
-        async for type, log in cli.astream_pull():
-            logs.append(log)
-            self.logger.on_pull(log)
+        async with self.logger.status("Pulling") as helper:
+            async for type, log in cli.astream_pull():
+                logs.append(log)
+                await helper.alog(log)
 
         return logs
+    
+    def pull(self):
+        unkoil(self.apull)
 
     async def adown(self) -> List[str]:
         """Down the deployment.
@@ -448,37 +332,12 @@ class Deployment(KoiledModel):
         cli = await self.aretrieve_cli()
 
         logs = []
-        async for type, log in cli.astream_down():
-            logs.append(log)
-            self.logger.on_down(log)
+        async with self.logger.status("Down") as helper:
+            async for type, log in cli.astream_down():
+                logs.append(log)
+                await helper.alog(log)
 
         return logs
-
-    async def aremove(self) -> None:
-        """Down the deployment.
-
-        Will call docker-compose down on the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if down_on_exit is True.
-
-        Returns
-        -------
-        List[str]
-            The logs of the down command.
-        """
-        cli = await self.aretrieve_cli()
-
-        return await self.project.atear_down(cli)
-
-    def remove(self) -> None:
-        """Remove the project
-
-        Returns
-        -------
-        List[str]
-            The logs of the down command.
-        """
-        return unkoil(self.aremove)
 
     def down(self) -> List[str]:
         """Down the deployment.
@@ -493,6 +352,59 @@ class Deployment(KoiledModel):
             The logs of the down command.
         """
         return unkoil(self.adown)
+
+    async def aremove(self, down_before_remove: bool=True) -> None:
+        """Down the deployment.
+
+        Will remove the deployment.
+
+        Parameters
+        ----------
+        down_before_remove : bool, optional
+            Should we call down before removing the deployment, by default True
+            If set to false, the deployment will be removed without calling down.
+            Which could lead to orphaned containers, networks, etc. Only deactivate this
+            if you know what you are doing.
+
+        Returns
+        -------
+        List[str]
+            The logs of the down command.
+        """
+
+        if down_before_remove:
+            try:
+                await self.adown()
+            except Exception as e:
+                pass
+
+
+
+        async with self.logger.status("Removing") as helper:
+            return await self.project.atear_down(helper)
+
+    def remove(self, down_before_remove: bool = True) -> None:
+        """Remove the project
+
+        Will remove the deployment.
+
+        Parameters
+        ----------
+        down_before_remove : bool, optional
+            Should we call down before removing the deployment, by default True
+            If set to false, the deployment will be removed without calling down.
+            Which could lead to orphaned containers, networks, etc. Only deactivate this
+            if you know what you are doing.
+
+        Returns
+        -------
+        List[str]
+            The logs of the down command.
+        """
+
+
+
+        return unkoil(self.aremove, down_before_remove=down_before_remove)
 
     async def astop(self) -> List[str]:
         """Stop the deployment.
@@ -509,9 +421,10 @@ class Deployment(KoiledModel):
         cli = await self.aretrieve_cli()
 
         logs = []
-        async for type, log in cli.astream_stop():
-            logs.append(log)
-            self.logger.on_stop(log)
+        async with self.logger.status("Stop") as helper:
+            async for type, log in cli.astream_stop():
+                logs.append(log)
+                await helper.alog(log)
 
         return logs
 

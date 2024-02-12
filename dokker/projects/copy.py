@@ -3,7 +3,7 @@ import os
 from typing import Optional
 import shutil
 from dokker.cli import CLI
-from dokker.types import ValidPath
+from dokker.types import ValidPath, LogHelper
 
 
 class CopyPathProject(BaseModel):
@@ -13,12 +13,14 @@ class CopyPathProject(BaseModel):
     directory and run it from there. This is useful for testing projects that
     are in production environments btu should be tested locally.
     """
+
     project_path: ValidPath
     project_name: Optional[str] = None
     base_dir: str = Field(default_factory=lambda: os.path.join(os.getcwd(), ".dokker"))
-    overwrite: bool = False
+    error_if_exists: bool = False
+    reinit_on_exists: bool = False
 
-    async def ainititialize(self) -> CLI:
+    async def ainititialize(self, log: LogHelper) -> CLI:
         """A setup method for the project.
 
         Returns
@@ -32,22 +34,30 @@ class CopyPathProject(BaseModel):
             self.project_name = os.path.basename(self.project_path)
 
         project_dir = os.path.join(self.base_dir, self.project_name)
-        if os.path.exists(project_dir) and not self.overwrite:
-            raise Exception(
-                f"Project {self.project_name} already exists in {self.base_dir}. Set overwrite to overwrite."
-            )
-
-        shutil.copytree(self.project_path, project_dir, dirs_exist_ok=self.overwrite)
-
         compose_file = os.path.join(project_dir, "docker-compose.yml")
+
+        if os.path.exists(project_dir):
+            if self.error_if_exists:
+                await log.log(f"Project {self.project_name} already exists in {self.base_dir}.")
+                raise Exception(
+                    f"Project {self.project_name} already exists in {self.base_dir}."
+                )
+
+            if not self.reinit_on_exists and os.path.exists(compose_file):
+                return CLI(
+                    compose_files=[os.path.join(project_dir, "docker-compose.yml")]
+                )
+
+        shutil.copytree(self.project_path, project_dir, dirs_exist_ok=True)
+
         if not os.path.exists(compose_file):
             raise Exception(
                 "No docker-compose.yml found in the template. It appears that the template is not a valid dokker template."
             )
 
         return CLI(compose_files=[compose_file])
-    
-    async def atear_down(self, cli: CLI) -> None:
+
+    async def atear_down(self, cli: CLI, log: LogHelper) -> None:
         """Tear down the project.
 
         A project can implement this method to tear down the project
@@ -61,12 +71,9 @@ class CopyPathProject(BaseModel):
             The CLI that was used to run the project.
 
         """
-        
-
 
         if self.project_name is None:
             self.project_name = os.path.basename(self.project_path)
-
 
         project_dir = os.path.join(self.base_dir, self.project_name)
         if os.path.exists(project_dir):
