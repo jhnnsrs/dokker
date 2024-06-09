@@ -441,7 +441,7 @@ class KonstruktorProject(BaseModel):
             compose_files=[compose_file],
         )
 
-    async def atear_down(self, cli: CLI) -> None:
+    async def atear_down(self) -> None:
         """Tear down the project.
 
         A project can implement this method to tear down the project
@@ -455,11 +455,6 @@ class KonstruktorProject(BaseModel):
             The CLI that was used to run the project.
 
         """
-        try:
-            await cli.adown()
-        except Exception as e:
-            print(e)
-            pass
 
         if not self._project_dir:
             raise InitError(

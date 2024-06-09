@@ -12,6 +12,8 @@ async def test_konstruktor():
         repo="https://raw.githubusercontent.com/jhnnsrs/konstruktor/master/repo/channels.json"
     )
 
+    await project.atear_down()
+
     await project.ainititialize()
 
 @pytest.mark.validate
