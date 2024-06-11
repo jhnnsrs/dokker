@@ -26,10 +26,10 @@ watcher = setup.create_watcher(
 # start the project (), will block until all health checks are successful
 with setup:
 
-    inspect = setup.inspect()
-
     print(setup.spec.services.get("echo_service").ports)
     # interact with the project
+
+    setup.up()
 
     with watcher:
         # interact with the project

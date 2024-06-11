@@ -27,7 +27,7 @@ class HealthError(Exception):
 
 
 class HealthCheck(BaseModel):
-    url: str | Callable[[ComposeSpec], str]
+    url: Union[str, Callable[[ComposeSpec], str]]
     service: str
     max_retries: int = 3
     timeout: int = 10
@@ -66,7 +66,7 @@ class Deployment(KoiledModel):
     up_logs: Optional[List[str]] = None
     stop_logs: Optional[List[str]] = None
 
-    logger: Logger = Field(default_factory=VoidLogger)
+    logger: Logger = Field(default_factory=PrintLogger)
 
     _spec: ComposeSpec
     _cli: CLI
@@ -149,28 +149,20 @@ class Deployment(KoiledModel):
                 await asyncio.sleep(check.timeout)
                 await self.acheck_healthz(check, retry=retry + 1)
             else:
-                if not check.error_with_logs:
-                    raise HealthError(
-                        f"Health check failed after {check.max_retries} retries. Logs are disabled."
-                    ) from e
-
-                logs = await self.afetch_service_logs(check.service)
-
                 raise HealthError(
-                    f"Health check failed after {check.max_retries} retries. Logs:\n"
-                    + "".join(logs)
+                    f"Health check failed after {check.max_retries} retries. Logs are disabled."
                 ) from e
 
     async def await_for_healthz(
         self, services: List[str] = None
-    ) -> List[aiohttp.Response]:
+    ) -> List[aiohttp.ClientResponse]:
         """Wait for all health checks to succeeed
 
         Args:
             services (List[str], optional): The services to filter by. Defaults to None.
 
         Returns:
-            List[aiohttp.Response]: The reponses of all servics
+            List[aiohttp.ClientResponse]: The reponses of all servics
         """
         if services is None:
             services = [
@@ -263,6 +255,9 @@ class Deployment(KoiledModel):
             self.logger.on_pull(log)
 
         return logs
+
+    def up(self, *args, **kwargs):
+        return unkoil(self, *args, **kwargs)
 
     async def astop(self):
         logs = []

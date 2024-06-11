@@ -15,8 +15,7 @@ ValidPath = Union[str, Path]
 
 @runtime_checkable
 class CLIBearer(Protocol):
-    async def aget_cli(self) -> "CLI":
-        ...
+    async def aget_cli(self) -> "CLI": ...
 
 
 class CLI(KoiledModel):
@@ -364,9 +363,17 @@ class CLI(KoiledModel):
         full_cmd = self.docker_cmd + ["config", "--format", "json"]
 
         lines = []
+        error_lines = []
 
         async for x, line in self.astream_command(full_cmd):
-            lines.append(line)
+            if x == "STDERR":
+                error_lines.append(line)
+            else:
+                lines.append(line)
+
+        if error_lines:
+            print("Is error?")
+            raise Exception("Could not inspect!", "\n".join(lines))
 
         result = "\n".join(lines)
 
