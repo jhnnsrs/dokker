@@ -11,3 +11,8 @@ services:
     command: ["-text", "Hello from HashiCorp!"]
     ports:
       - "5679:5678"
+
+
+  
+   
+      

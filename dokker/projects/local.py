@@ -8,6 +8,7 @@ class LocalProject(BaseModel):
     compose_files: List[Path] = Field(default_factory=lambda: ["docker-compose.yml"])
 
     async def ainititialize(self) -> CLI:
+
         return CLI(compose_files=self.compose_files)
 
     async def abefore_pull(self) -> None:

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Any, Coroutine, Optional, List, Protocol, runtime_checkable
-from httpx import AsyncClient
+import aiohttp
 import time
 from koil.composition import KoiledModel
 import asyncio
@@ -9,6 +9,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dokker.compose_spec import ComposeSpec
 from dokker.project import Project
+from dokker.projects.local import LocalProject
 from typing import Union, Callable
 from koil import unkoil
 from dokker.cli import CLI
@@ -26,7 +27,7 @@ class HealthError(Exception):
 
 
 class HealthCheck(BaseModel):
-    url: str
+    url: str | Callable[[ComposeSpec], str]
     service: str
     max_retries: int = 3
     timeout: int = 10
@@ -35,26 +36,21 @@ class HealthCheck(BaseModel):
 
 @runtime_checkable
 class Logger(Protocol):
-    def on_pull(self, log: str):
-        ...
+    def on_pull(self, log: str): ...
 
-    def on_up(self, log: str):
-        ...
+    def on_up(self, log: str): ...
 
-    def on_stop(self, log: str):
-        ...
+    def on_stop(self, log: str): ...
 
-    def on_logs(self, log: str):
-        ...
+    def on_logs(self, log: str): ...
 
-    def on_down(self, log: str):
-        ...
+    def on_down(self, log: str): ...
 
 
 class Deployment(KoiledModel):
     """A deployment is a set of services that are deployed together."""
 
-    project: Project = Field(default_factory=Project)
+    project: Project = Field(default_factory=LocalProject)
     services: Optional[List[str]] = None
 
     health_checks: List[HealthCheck] = Field(default_factory=list)
@@ -74,13 +70,12 @@ class Deployment(KoiledModel):
 
     _spec: ComposeSpec
     _cli: CLI
-    _threadpool: Optional[ThreadPoolExecutor] = None
 
     @property
     def spec(self) -> ComposeSpec:
         if self._spec is None:
             raise Exception(
-                "Deployment not inspected. Call await deployment.ainspect() first."
+                "Deployment not inspected and inspect_on_enter set to false. Call await deployment.ainspect() first or set inspect_on_enter to true"
             )
         return self._spec
 
@@ -95,9 +90,12 @@ class Deployment(KoiledModel):
         self._spec = await self._cli.ainspect_config()
         return self._spec
 
+    def inspect(self) -> ComposeSpec:
+        return unkoil(self.ainspect)
+
     def add_health_check(
         self,
-        url: str = None,
+        url: Union[str, Callable[[ComposeSpec], str]] = None,
         service: str = None,
         max_retries: int = 3,
         timeout: int = 10,
@@ -119,7 +117,7 @@ class Deployment(KoiledModel):
     async def arequest(
         self, service_name: str, private_port: int = None, path: str = "/"
     ):
-        async with AsyncClient() as client:
+        async with aiohttp.AsyncClient() as client:
             try:
                 response = await client.get(f"http://127.0.0.1:{private_port}{path}")
                 assert response.status_code == 200
@@ -131,10 +129,17 @@ class Deployment(KoiledModel):
         return unkoil(self.arequest, service_name, private_port=private_port, path=path)
 
     async def acheck_healthz(self, check: HealthCheck, retry: int = 0):
+
+        if not self._spec:
+            await self.ainspect()
+
         try:
-            async with AsyncClient() as client:
+            async with aiohttp.AsyncClient() as client:
+
+                url = check.url if isinstance(check.url, str) else check.url(self._spec)
+
                 try:
-                    response = await client.get(check.url)
+                    response = await client.get(url)
                     assert response.status_code == 200
                     return response
                 except Exception as e:
@@ -157,8 +162,16 @@ class Deployment(KoiledModel):
                 ) from e
 
     async def await_for_healthz(
-        self, timeout: int = 3, retry: int = 0, services: List[str] = None
-    ):
+        self, services: List[str] = None
+    ) -> List[aiohttp.Response]:
+        """Wait for all health checks to succeeed
+
+        Args:
+            services (List[str], optional): The services to filter by. Defaults to None.
+
+        Returns:
+            List[aiohttp.Response]: The reponses of all servics
+        """
         if services is None:
             services = [
                 check.service for check in self.health_checks
@@ -172,7 +185,36 @@ class Deployment(KoiledModel):
             ]
         )
 
-    def logswatcher(self, service_name: str, **kwargs):
+    def create_watcher(self, service_name: str, **kwargs):
+        """Create a Log Watcher
+
+        Creates a log watcher that is bound to this deployments project,
+        a log watcher allows you to collect the logs of a service during
+        its context:
+
+        Usage:
+         ```python
+
+         deployment = Deployment(compose_file="docker_compose.yaml")
+
+         watcher = deployment.create_watcher("the_service_to_watch")
+
+         with deployment:
+
+              with watcher:
+
+                   # Do something interacting with the service
+                   # requests.qt()
+
+              print(watcher.collected_logs)
+
+
+        Args:
+            service_name (str): _description_
+
+        Returns:
+            _type_: _description_
+        """
         return LogWatcher(cli_bearer=self, services=[service_name], tail=1, **kwargs)
 
     async def aup(self):
@@ -237,7 +279,6 @@ class Deployment(KoiledModel):
         return self._cli
 
     async def __aenter__(self):
-        self._threadpool = ThreadPoolExecutor(max_workers=self.threadpool_workers)
 
         await self.ainititialize()
 
@@ -266,6 +307,7 @@ class Deployment(KoiledModel):
         if self.down_on_exit:
             await self.project.abefore_down()
             await self.adown()
+
         self._cli = None
 
     class Config:

@@ -15,15 +15,19 @@ class TException(Exception):
 
 
 health_check = setup.add_health_check(
-    service="echo_service", url="http://localhost:5678"
+    service="echo_service",
+    url=lambda spec: f"http://localhost:{spec.services.get('echo_service').ports[0].published}",
 )  # Creates a health check
 
-watcher = setup.logswatcher(
+watcher = setup.create_watcher(
     "echo_service", wait_for_logs=True
 )  # Creates a watcher for the echo_service service
 
 # start the project (), will block until all health checks are successful
 with setup:
+
+    inspect = setup.inspect()
+
     print(setup.spec.services.get("echo_service").ports)
     # interact with the project
 

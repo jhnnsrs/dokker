@@ -4,7 +4,7 @@ import logging
 
 class Logger(BaseModel):
     logger: logging.Logger = Field(default_factory=lambda: logging.getLogger(__name__))
-    log_level: int = logging.INFO
+    log_level: int = logging.DEBUG
 
     def on_pull(self, log: str):
         self.logger.log(self.log_level, log)
