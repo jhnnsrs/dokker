@@ -8,7 +8,7 @@ class PrintLogger(BaseModel):
     should_print: bool = True
     print_function: Callable[[str], None] = print
 
-    def on_pull(self, log: str) -> None:
+    def on_pull(self, log: tuple[str, str]) -> None:
         """A method for logs
 
         Parameters
@@ -18,7 +18,7 @@ class PrintLogger(BaseModel):
         """
         self.print_function(log)
 
-    def on_up(self, log: str) -> None:
+    def on_up(self, log: tuple[str, str]) -> None:
         """A method for logs
 
         Parameters
@@ -28,7 +28,7 @@ class PrintLogger(BaseModel):
         """
         self.print_function(log)
 
-    def on_stop(self, log: str) -> None:
+    def on_stop(self, log: tuple[str, str]) -> None:
         """A method for logs
 
         Parameters
@@ -38,7 +38,7 @@ class PrintLogger(BaseModel):
         """
         self.print_function(log)
 
-    def on_logs(self, log: str) -> None:
+    def on_logs(self, log: tuple[str, str]) -> None:
         """A method for logs
 
         Parameters
@@ -48,7 +48,7 @@ class PrintLogger(BaseModel):
         """
         self.print_function(log)
 
-    def on_down(self, log: str) -> None:
+    def on_down(self, log: tuple[str, str]) -> None:
         """A method for logs
 
         Parameters

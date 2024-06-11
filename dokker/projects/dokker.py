@@ -12,9 +12,6 @@ logger = logging.getLogger(__name__)
 ValidPath = Union[str, Path]
 
 
-default = os.path.join(os.getcwd(), ".dokker")
-
-
 class DokkerProjectError(ProjectError):
     """An error raised when a local project is not initialized."""
 
@@ -29,7 +26,9 @@ class DokkerProject(BaseModel):
     interfering with the docker project on tear-down.
     """
 
-    base_dir = Field(default=default)
+    base_dir: ValidPath = Field(
+        default_factory=lambda: os.path.join(os.getcwd(), ".dokker")
+    )
     name: str
     _outs: Optional[Dict[str, Any]] = None
     _project_dir: Optional[ValidPath] = None

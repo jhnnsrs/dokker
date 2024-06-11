@@ -1,3 +1,5 @@
+import aiohttp.client_exceptions
+import aiohttp.http_exceptions
 from pydantic import BaseModel, Field
 from typing import Dict, Optional, List, Protocol, runtime_checkable
 from koil.composition import KoiledModel
@@ -9,12 +11,12 @@ from typing import Union
 from koil import unkoil
 from dokker.cli import CLI
 from dokker.loggers.void import VoidLogger
-from .log_watcher import LogWatcher
+from .log_watcher import LogRoll, LogWatcher
 import aiohttp
 import certifi
 from ssl import SSLContext
 import ssl
-from typing import Any, Optional, List, Union
+from typing import Any, Optional, List, Union, Callable
 from dokker.errors import NotInitializedError, NotInspectedError
 
 
@@ -26,7 +28,7 @@ class HealthError(Exception):
 
 
 class HealthCheck(BaseModel):
-    url: str
+    url: Union[str, Callable[[ComposeSpec], str]]
     service: str
     max_retries: int = 3
     timeout: int = 10
@@ -38,16 +40,27 @@ class HealthCheck(BaseModel):
         default_factory=lambda: ssl.create_default_context(cafile=certifi.where()),
         description="SSL Context to use for the request",
     )
+    valid_statuses: list[int] = Field(default_factory=lambda: [200])
 
-    async def acheck(self):
+    async def acheck(self, spec: ComposeSpec):
         async with aiohttp.ClientSession(
             headers=self.headers,
             connector=aiohttp.TCPConnector(ssl=self.ssl_context),
         ) as session:
             # get json from endpoint
-            async with session.get(self.url) as resp:
-                assert resp.status == 200
-                return await resp.text()
+            url = self.url if isinstance(self.url, str) else self.url(spec)
+
+            try:
+                async with session.get(url) as resp:
+                    if resp.status not in self.valid_statuses:
+                        raise HealthError(
+                            f"Status is not in valid statuses. Got {resp.status}, wants on of {self.valid_statuses} "
+                        )
+                    return await resp.text()
+            except aiohttp.http_exceptions.BadHttpMessage as e:
+                raise HealthError("Health test Failed") from e
+            except aiohttp.client_exceptions.ClientError as e:
+                raise HealthError("Health test failed") from e
 
     class Config:
         arbitrary_types_allowed = True
@@ -56,27 +69,21 @@ class HealthCheck(BaseModel):
 
 @runtime_checkable
 class Logger(Protocol):
-    def on_pull(self, log: str):
-        ...
+    def on_pull(self, log: tuple[str, str]): ...
 
-    def on_up(self, log: str):
-        ...
+    def on_up(self, log: tuple[str, str]): ...
 
-    def on_stop(self, log: str):
-        ...
+    def on_stop(self, log: tuple[str, str]): ...
 
-    def on_logs(self, log: str):
-        ...
+    def on_logs(self, log: tuple[str, str]): ...
 
-    def on_down(self, log: str):
-        ...
+    def on_down(self, log: tuple[str, str]): ...
 
 
 class Deployment(KoiledModel):
     """A deployment is a set of services that are deployed together."""
 
     project: Project = Field(default_factory=Project)
-    services: Optional[List[str]] = None
 
     health_checks: List[HealthCheck] = Field(default_factory=list)
     initialize_on_enter: bool = False
@@ -177,7 +184,7 @@ class Deployment(KoiledModel):
 
     def add_health_check(
         self,
-        url: str,
+        url: Union[str, Callable[[ComposeSpec], str]],
         service: str,
         max_retries: int = 3,
         timeout: int = 10,
@@ -187,8 +194,8 @@ class Deployment(KoiledModel):
 
         Parameters
         ----------
-        url : str
-            The url to check.
+        url : Union[str, Callable[[ComposeSpec], str]]
+            The url to check. Also accepts a function that uses the introspected compose spec to build an url
         service : str
             The service this health check is for.
         max_retries : int, optional
@@ -216,9 +223,12 @@ class Deployment(KoiledModel):
         return check
 
     async def acheck_healthz(self, check: HealthCheck, retry: int = 0):
+        if not self._spec:
+            await self.ainspect()
+
         try:
-            await check.acheck()
-        except Exception as e:
+            await check.acheck(self._spec)
+        except HealthError as e:
             if retry < check.max_retries:
                 await asyncio.sleep(check.timeout)
                 await self.acheck_healthz(check, retry=retry + 1)
@@ -228,16 +238,16 @@ class Deployment(KoiledModel):
                         f"Health check failed after {check.max_retries} retries. Logs are disabled."
                     ) from e
 
-                logs = []
+                logs = LogRoll()
 
-                async for std, i in self._cli.astream_docker_logs(
+                async for log in self._cli.astream_docker_logs(
                     services=[check.service]
                 ):
-                    logs.append(i)
+                    logs.append(log)
 
                 raise HealthError(
                     f"Health check failed after {check.max_retries} retries. Logs:\n"
-                    + "\n".join(logs)
+                    + "\n".join(i for x, i in logs)
                 ) from e
 
     async def await_for_healthz(
@@ -256,7 +266,14 @@ class Deployment(KoiledModel):
             ]
         )
 
-    def logswatcher(self, service_names: Union[List[str], str], **kwargs):
+    async def check_health(
+        self,
+    ):
+        return unkoil(
+            self.await_for_healthz,
+        )
+
+    def create_watcher(self, service_names: Union[List[str], str], **kwargs):
         """Get a logswatcher for a service.
 
         A logswatcher is an object that can be used to watch the logs of a service, as
@@ -312,8 +329,8 @@ class Deployment(KoiledModel):
             The logs of the up command.
         """
         cli = await self.aretrieve_cli()
-        logs = []
-        async for type, log in cli.astream_up(detach=detach):
+        logs = LogRoll()
+        async for log in cli.astream_up(detach=detach):
             logs.append(log)
             self.logger.on_up(log)
 
@@ -339,7 +356,7 @@ class Deployment(KoiledModel):
         services: Union[List[str], str],
         await_health: bool = True,
         await_health_timeout: int = 3,
-    ):
+    ) -> LogRoll:
         """Restarts a service.
 
         Will call docker-compose restart on the list of services.
@@ -357,15 +374,15 @@ class Deployment(KoiledModel):
 
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the restart command.
         """
         cli = await self.aretrieve_cli()
         if isinstance(services, str):
             services = [services]
 
-        logs = []
-        async for type, log in cli.astream_restart(services=services):
+        logs = LogRoll()
+        async for log in cli.astream_restart(services=services):
             logs.append(log)
 
         if await_health:
@@ -426,10 +443,9 @@ class Deployment(KoiledModel):
         """
         cli = await self.aretrieve_cli()
 
-        logs = []
-        async for type, log in cli.astream_pull():
+        logs = LogRoll()
+        async for log in cli.astream_pull():
             logs.append(log)
-            self.logger.on_pull(log)
 
         return logs
 
@@ -447,10 +463,9 @@ class Deployment(KoiledModel):
         """
         cli = await self.aretrieve_cli()
 
-        logs = []
-        async for type, log in cli.astream_down():
+        logs = LogRoll()
+        async for log in cli.astream_down():
             logs.append(log)
-            self.logger.on_down(log)
 
         return logs
 
@@ -508,10 +523,9 @@ class Deployment(KoiledModel):
         """
         cli = await self.aretrieve_cli()
 
-        logs = []
-        async for type, log in cli.astream_stop():
+        logs = LogRoll()
+        async for log in cli.astream_stop():
             logs.append(log)
-            self.logger.on_stop(log)
 
         return logs
 

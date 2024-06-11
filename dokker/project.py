@@ -23,8 +23,6 @@ class Project(Protocol):
         """
         ...
 
-
-
     async def atear_down(self, cli: CLI) -> None:
         """Tear down the project.
 
@@ -40,8 +38,6 @@ class Project(Protocol):
 
         """
         ...
-
-
 
     async def abefore_pull(self) -> None:
         """A setup method for the project.
@@ -76,7 +72,7 @@ class Project(Protocol):
         ...
 
     async def abefore_stop(self) -> None:
-        """A selisttup method for the project.
+        """A setup method for the project.
 
         Returns:
             Optional[List[str]]: A list of logs from the setup process.

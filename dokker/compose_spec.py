@@ -89,11 +89,16 @@ class ComposeConfigService(BaseModel):
             The label of the service.
         """
         return self.labels.get(label)
-    
 
-    
+    def get_port_for_internal(self, port: int) -> "ComposeServicePort":
+        for i in self.ports:
+            if not isinstance(i, ComposeServicePort):
+                raise Exception("This list contains other items")
+            if i.target == port:
+                return i
 
-        
+        raise Exception(f"No published port found for Port: {port}")
+
 
 class ComposeConfigNetwork(BaseModel):
     driver: Optional[str] = None
@@ -126,7 +131,6 @@ class ComposeSpec(BaseModel):
     configs: Any = None
     secrets: Any = None
 
-
     def find_service(self, name: Optional[str] = None) -> ComposeConfigService:
         """Find a service by name.
 
@@ -147,10 +151,8 @@ class ComposeSpec(BaseModel):
             if not service:
                 raise Exception(f"No service found with name {name}.")
             return service
-            
 
         return self.services[list(self.services.keys())[0]]
-    
 
 
 class ComposeProject(BaseModel):

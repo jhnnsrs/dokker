@@ -2,7 +2,7 @@ from koil.composition import KoiledModel
 import asyncio
 from typing import Optional, List, Callable, Union
 from dokker.cli import CLIBearer
-
+from pydantic import Field
 
 try:
     from rich import panel
@@ -34,6 +34,39 @@ except ImportError:
         return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info_str}"
 
 
+class LogRoll(list):
+
+    @property
+    def stdout_gen(self):
+
+        for log, x in self:
+            if log == "STDOUT":
+                yield x
+
+    @property
+    def stderr_gen(self):
+
+        for log, x in self:
+            if log == "STDOUT":
+                yield x
+
+    @property
+    def stderr_list(self):
+        return list(self.stderr_gen)
+
+    @property
+    def stdout_list(self):
+        return list(self.stdout_gen)
+
+    @property
+    def stdout(self):
+        return "\n".join(self.stdout_gen)
+
+    @property
+    def stderr(self):
+        return "\n".join(self.stderr_gen)
+
+
 class LogWatcher(KoiledModel):
     cli_bearer: CLIBearer
     tail: Optional[str] = None
@@ -47,7 +80,7 @@ class LogWatcher(KoiledModel):
     wait_for_first_log: bool = True
     wait_for_logs: bool = False
     wait_for_logs_timeout: int = 10
-    collected_logs: List[str] = []
+    collected_logs: LogRoll = Field(default_factory=LogRoll)
     log_function: Optional[Callable] = None
     append_to_traceback: bool = True
     capture_stdout: bool = True
@@ -79,10 +112,8 @@ class LogWatcher(KoiledModel):
             await self.aon_logs(log)
             self.collected_logs.append(log)
 
-        
-
     async def __aenter__(self):
-        self.collected_logs = []
+        self.collected_logs = LogRoll()
         self._just_one_log = asyncio.Future()
         self._watch_task = asyncio.create_task(self.awatch_logs())
 

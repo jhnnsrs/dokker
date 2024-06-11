@@ -9,18 +9,18 @@ if TYPE_CHECKING:
 
 
 def mirror(
-      local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = None  
+    local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = None
 ) -> Deployment:
     """Creates a Mirro Deployment
 
     A mirror deployment is a deployment that copies a local path to a temporary
     directory and runs it from there. This is useful for testing projects that
-    are in production environments btu should be tested locally.
+    are in production environments but should be tested locally.
 
     Parameters
     ----------
     local_path : ValidPath
-        _description_
+        The path to the project (will be copyied and on tear down deleted)
     health_checks : Optional[List[HealthCheck]], optional
         _description_, by default None
 
@@ -31,46 +31,8 @@ def mirror(
     """
     if health_checks is None:
         health_checks = []
-    
-    project =  CopyPathProject(project_path=local_path)
-    deployment = Deployment(
-        project=project,
-        health_checks=health_checks,
-    )
 
-    deployment.pull_on_enter = False
-    deployment.down_on_exit = False
-    deployment.stop_on_exit = False
-
-    return deployment
-
-
-
-def cookiecutter(
-        repo_url: str, health_checks: Optional[List[HealthCheck]] = None
-) -> Deployment:
-    """Generates a cookiecutter deployemnt.
-
-    A cookiecutter deployemnt is a deployemnt that is generated from a cookiecutter template.
-    This function is a helper function to generate a CookieCutterProject, and
-    requires that cookiecutter is installed.
-
-    Parameters
-    ----------
-    repo_url : str
-        The url to the cookiecutter template.
-
-    Returns
-    -------
-    Deployment
-        The deployment
-    """
-    from dokker.projects.contrib.cookiecutter import CookieCutterProject
-
-    if health_checks is None:
-        health_checks = []
-
-    project =  CookieCutterProject(repo_url=repo_url)
+    project = CopyPathProject(project_path=local_path)
     deployment = Deployment(
         project=project,
         health_checks=health_checks,
@@ -84,7 +46,8 @@ def cookiecutter(
 
 
 def local(
-    docker_compose_file: Union[ValidPath, List[ValidPath]], health_checks: Optional[List[HealthCheck]] = None
+    docker_compose_file: Union[ValidPath, List[ValidPath]],
+    health_checks: Optional[List[HealthCheck]] = None,
 ) -> Deployment:
     """Creates a local deployment.
 
@@ -97,7 +60,7 @@ def local(
 
     if health_checks is None:
         health_checks = []
-        
+
     project = LocalProject(
         compose_files=docker_compose_file,
     )
@@ -116,7 +79,8 @@ def local(
 
 
 def monitoring(
-    docker_compose_file: Union[ValidPath, List[ValidPath]], health_checks: Optional[List[HealthCheck]] = None
+    docker_compose_file: Union[ValidPath, List[ValidPath]],
+    health_checks: Optional[List[HealthCheck]] = None,
 ) -> Deployment:
     """Generates a monitoring deployment.
 
@@ -158,7 +122,8 @@ def monitoring(
 
 
 def testing(
-    docker_compose_file: Union[ValidPath, List[ValidPath]], health_checks: Optional[List[HealthCheck]] = None
+    docker_compose_file: Union[ValidPath, List[ValidPath]],
+    health_checks: Optional[List[HealthCheck]] = None,
 ) -> Deployment:
     """Generates a testing deployment.
 

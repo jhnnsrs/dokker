@@ -9,15 +9,12 @@ setup = local(
 )
 
 
-class TException(Exception):
-    pass
-
-
 health_check = setup.add_health_check(
-    service="echo_service", url="http://localhost:5678"
+    service="echo_service",
+    url=lambda spec: f"http://localhost:{spec.services['echo_service'].get_port_for_internal(5678).published}",
 )  # Creates a health check
 
-watcher = setup.logswatcher(
+watcher = setup.create_watcher(
     "echo_service", wait_for_logs=True
 )  # Creates a watcher for the echo_service service
 
@@ -26,13 +23,13 @@ with setup:
 
     # interact with the project
 
-    with watcher:
-        # interact with the project
-        print(setup.restart("echo_service"))
+    setup.inspect()
 
     with watcher:
         setup.restart("echo_service")
 
-    print(watcher.collected_logs)
+        setup.check_health()
+
+    print(watcher.collected_logs.stdout)
 
     # interact with the project
