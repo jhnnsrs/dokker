@@ -13,6 +13,7 @@ class CopyPathProject(BaseModel):
     directory and run it from there. This is useful for testing projects that
     are in production environments btu should be tested locally.
     """
+
     project_path: ValidPath
     project_name: Optional[str] = None
     base_dir: str = Field(default_factory=lambda: os.path.join(os.getcwd(), ".dokker"))
@@ -46,7 +47,7 @@ class CopyPathProject(BaseModel):
             )
 
         return CLI(compose_files=[compose_file])
-    
+
     async def atear_down(self, cli: CLI) -> None:
         """Tear down the project.
 
@@ -61,12 +62,9 @@ class CopyPathProject(BaseModel):
             The CLI that was used to run the project.
 
         """
-        
-
 
         if self.project_name is None:
             self.project_name = os.path.basename(self.project_path)
-
 
         project_dir = os.path.join(self.base_dir, self.project_name)
         if os.path.exists(project_dir):

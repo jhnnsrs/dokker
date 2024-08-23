@@ -18,8 +18,9 @@ class LocalProject(BaseModel):
     interfering with the docker project on tear-down.
     """
 
-
-    compose_files: List[ValidPath] = Field(default_factory=lambda: ["docker-compose.yml"])
+    compose_files: List[ValidPath] = Field(
+        default_factory=lambda: ["docker-compose.yml"]
+    )
 
     async def ainititialize(self) -> CLI:
         """A setup method for the project.
@@ -30,7 +31,7 @@ class LocalProject(BaseModel):
             The CLI to use for the project.
         """
         return CLI(compose_files=self.compose_files)
-    
+
     async def atear_down(self, cli: CLI) -> None:
         """Tear down the project.
 

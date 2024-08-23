@@ -12,4 +12,3 @@ class NotInspectedError(DokkerError):
 
 class NotInspectableError(DokkerError):
     """Raised when an object is not inspectable."""
-
