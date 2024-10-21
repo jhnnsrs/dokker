@@ -5,6 +5,7 @@ from typing import Callable
 class PrintLogger(BaseModel):
     """A logger that prints all logs to stdout"""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     should_print: bool = True
     print_function: Callable[[str], None] = print
 
@@ -57,6 +58,3 @@ class PrintLogger(BaseModel):
             The log to print
         """
         self.print_function(log)
-
-    class Config:
-        arbitrary_types_allowed = True

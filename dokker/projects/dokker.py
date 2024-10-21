@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Union
 from pathlib import Path
 from dokker.cli import CLI
@@ -26,6 +26,7 @@ class DokkerProject(BaseModel):
     interfering with the docker project on tear-down.
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     base_dir: ValidPath = Field(
         default_factory=lambda: os.path.join(os.getcwd(), ".dokker")
     )
@@ -115,8 +116,3 @@ class DokkerProject(BaseModel):
             Optional[List[str]]: A list of logs from the setup process.
         """
         return None
-
-    class Config:
-        arbitrary_types_allowed = True
-        underscore_attrs_are_private = True
-        extra = "forbid"

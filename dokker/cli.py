@@ -9,7 +9,7 @@ from typing import (
     AsyncIterator,
     Tuple,
 )
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 from koil.composition import KoiledModel
 from pathlib import Path
 import asyncio
@@ -69,12 +69,17 @@ class CLI(KoiledModel):
     compose_compatibility: Optional[bool] = None
     client_call: List[str] = Field(default_factory=lambda: ["docker", "compose"])
 
-    @validator("compose_files", each_item=True)
+    @field_validator("compose_files")
     def _validate_compose_files(cls, v: str) -> str:
-        if os.path.exists(v):
-            return v
-        else:
-            raise ValueError(f"Compose File {v} does not exist.")
+
+        x = []
+        for vo in v:
+            if os.path.exists(vo):
+                x.append(vo)
+            else:
+                raise ValueError(f"Compose File {v} does not exist.")
+
+        return x
 
     @property
     def docker_cmd(self) -> List[str]:

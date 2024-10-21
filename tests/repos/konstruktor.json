@@ -133,7 +133,7 @@
                     "mikro": {
                       "enabled": true
                     },
-                    "rekuest": {
+                    "rekuest_next": {
                       "enabled": true
                     },
                     "kluster": {
@@ -183,9 +183,9 @@
                           "required": true
                         },
                         {
-                          "key": "rekuest.enabled",
-                          "label": "Do you want to enable Rekuest?",
-                          "description": "Rekuest is a service to manage your requests",
+                          "key": "rekuest_next.enabled",
+                          "label": "Do you want to enable RekuestNext?",
+                          "description": "RekuestNext is a service to manage your requests",
                           "type": "bool",
                           "required": true
                         },

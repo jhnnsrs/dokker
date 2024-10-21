@@ -1,6 +1,6 @@
 import aiohttp.client_exceptions
 import aiohttp.http_exceptions
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Dict, Optional, List, Protocol, runtime_checkable
 from koil.composition import KoiledModel
 import asyncio
@@ -28,6 +28,7 @@ class HealthError(Exception):
 
 
 class HealthCheck(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     url: Union[str, Callable[[ComposeSpec], str]]
     service: str
     max_retries: int = 3
@@ -61,10 +62,6 @@ class HealthCheck(BaseModel):
                 raise HealthError("Health test Failed") from e
             except aiohttp.client_exceptions.ClientError as e:
                 raise HealthError("Health test failed") from e
-
-    class Config:
-        arbitrary_types_allowed = True
-        underscore_attrs_are_private = True
 
 
 @runtime_checkable
@@ -600,9 +597,3 @@ class Deployment(KoiledModel):
             await self.project.atear_down(self._cli)
 
         self._cli = None
-
-    class Config:
-        """Pydantic configuration for the deployment."""
-
-        arbitrary_types_allowed = True
-        underscore_attrs_are_private = True
