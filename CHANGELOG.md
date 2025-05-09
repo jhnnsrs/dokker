@@ -1,7 +1,15 @@
 # CHANGELOG
 
 
+## v1.0.0 (2025-05-09)
+
+
 ## v0.2.0 (2025-05-09)
+
+### Features
+
+- Major update
+  ([`cef22b3`](https://github.com/jhnnsrs/dokker/commit/cef22b3226b2e104e30bbdec89d4dfac2b6eb7f6))
 
 
 ## v0.1.0 (2025-05-09)
