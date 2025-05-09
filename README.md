@@ -61,16 +61,19 @@ deployment = local(
         )
     ],
 )
-deployment.health_on_enter = True  # optional: wait for all health checks to be successful on enter
 
 watcher = deployment.logswatcher(
     "echo_service", wait_for_logs=True, 
 )  # Creates a watcher for the echo_service service, a watcher
 # will asynchronously collect the logs of the service and make them available
 
-# start the project (), will block until all health checks are successful
 with deployment:
     # interact with the project
+
+    deployment.up()  # start the project
+
+    deployment.check_health()  # check the health of the project
+
 
     with watcher:
 
