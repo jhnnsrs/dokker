@@ -2,8 +2,7 @@
 
 ### Development
 
-This is a development version of the package. Its API is not stable and
-might change at any time.
+This is an open source project, and contributions are welcome! The api is only partially stable, so feel free to suggest changes or improvements.
 
 ## Inspiration
 
