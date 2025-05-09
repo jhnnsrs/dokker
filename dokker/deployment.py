@@ -101,8 +101,8 @@ class Deployment(KoiledModel):
 
     logger: Logger = Field(default_factory=VoidLogger)
 
-    _spec: ComposeSpec = None
-    _cli: CLI = None
+    _spec: Optional[ComposeSpec] = None
+    _cli: Optional[CLI] = None
 
     @property
     def spec(self) -> ComposeSpec:
@@ -219,7 +219,7 @@ class Deployment(KoiledModel):
         self.health_checks.append(check)
         return check
 
-    async def acheck_healthz(self, check: HealthCheck, retry: int = 0):
+    async def arun_check(self, check: HealthCheck, retry: int = 0):
         if not self._spec:
             await self.ainspect()
 
@@ -228,7 +228,7 @@ class Deployment(KoiledModel):
         except HealthError as e:
             if retry < check.max_retries:
                 await asyncio.sleep(check.timeout)
-                await self.acheck_healthz(check, retry=retry + 1)
+                await self.arun_check(check, retry=retry + 1)
             else:
                 if not check.error_with_logs:
                     raise HealthError(
@@ -247,7 +247,7 @@ class Deployment(KoiledModel):
                     + "\n".join(i for x, i in logs)
                 ) from e
 
-    async def await_for_healthz(
+    async def acheck_health(
         self, timeout: int = 3, retry: int = 0, services: Optional[List[str]] = None
     ):
         if services is None:
@@ -257,18 +257,16 @@ class Deployment(KoiledModel):
 
         return await asyncio.gather(
             *[
-                self.acheck_healthz(check)
+                self.arun_check(check)
                 for check in self.health_checks
                 if check.service in services
             ]
         )
 
-    async def check_health(
+    def check_health(
         self,
     ):
-        return unkoil(
-            self.await_for_healthz,
-        )
+        return unkoil(self.acheck_health)
 
     def create_watcher(self, service_names: Union[List[str], str], **kwargs):
         """Get a logswatcher for a service.

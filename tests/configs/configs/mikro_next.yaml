@@ -1,5 +1,6 @@
 db:
-  db_name: mikro_db
+  db_name: mikro
+  dependency: db
   engine: django.db.backends.postgresql
   host: db
   password: hello_django
@@ -10,24 +11,31 @@ django:
     email: admin@admin.com
     password: admin
     username: admin
-  debug: false
+  debug: true
   hosts:
     - "*"
-  secret_key: t!7qh%)_#&k_6px&n(xm4be@t3nrmgh=h2k#8f@rbgz=&y9f21
+  secret_key: ab94ec351412c22324b2f635e0d6b9dd
+force_script_name: ""
 lok:
   issuer: lok
   key_type: RS256
-  public_key_pem_file: public_key.pem
-minio:
-  access_key: mikro_access_key
-  buckets:
-    zarr: zarrnew
-    parquet: parquetnew
-    media: mikromedianew
-  host: minio
-  port: "9000"
-  protocol: http
-  secret_key: mikro_secret_key
+  public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDXx/g7dyiwmfIQvkBKvUAM+KBuL1KdvZfZMlYhbyrz9Auk2xao1gLYiQJ183joiXadUreL4BugUrasQVdR9JvBWXOBeqm2FD5Ehf9VvqXdzCOQ7/fUXkb9N8sqmz5YitQuheKGDh0weNmVcfdsCGU38sACEvFQg+5dv1tqLbm7EllT+vogntDVX16DmvpvFEX4HYHpT8qM/xuqSB6yQ8+wBuQd3K7WTFgUrUqQx6zFrSMUbSArPrrY5Z0GJAeDAHKp4+V+um4mSHpYM2nBJ5pn80wYpsf97KIL9P+UJzjb/indB8dCqpPkAk3HogBhj67Tp5JoqCMoaXHFU3tiYQCp
 redis:
+  dependency: redis
   host: redis
   port: 6379
+s3:
+  access_key: ZvBLOQAApECKXISSJyiox192s6RNhVgmN9LZhWFYbdA
+  buckets:
+    media: media
+    parquet: parquet
+    zarr: zarr
+  dependency: minio
+  host: minio
+  name: lanky-green-dalmatian
+  port: 9000
+  protocol: http
+  secret_key: rqh27SKddiMciJ2RPSpQF3l_SYtlXNKCA9Fp3NgrYBQ
+scopes:
+  mikro_read: Read image from the database
+  mikro_write: Write image to the database

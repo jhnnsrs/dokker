@@ -1,7 +1,7 @@
 buckets:
-  - name: mikromedianew
-  - name: zarrnew
-  - name: parquetnew
+  - name: zarr
+  - name: parquet
+  - name: media
 users:
   - access_key: mikro_access_key
     name: mikronew

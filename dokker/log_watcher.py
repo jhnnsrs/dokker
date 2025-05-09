@@ -69,7 +69,7 @@ class LogRoll(list):
 
 class LogWatcher(KoiledModel):
     cli_bearer: CLIBearer
-    tail: Optional[str] = None
+    tail: Optional[int] = None
     follow: bool = True
     no_log_prefix: bool = False
     timestamps: bool = False
@@ -99,7 +99,7 @@ class LogWatcher(KoiledModel):
     async def awatch_logs(self):
         cli = await self.cli_bearer.aget_cli()
         async for log in cli.astream_docker_logs(
-            tail=self.tail,
+            tail=str(self.tail) if self.tail else None,
             follow=self.follow,
             no_log_prefix=self.no_log_prefix,
             timestamps=self.timestamps,

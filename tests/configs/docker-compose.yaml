@@ -1,5 +1,3 @@
-version: "3.4"
-
 services:
   redis:
     image: redis:latest
@@ -7,7 +5,7 @@ services:
     image: jhnnsrs/daten:next
     restart: always
     environment:
-      POSTGRES_MULTIPLE_DATABASES: mikro_db
+      POSTGRES_MULTIPLE_DATABASES: mikro
       POSTGRES_PASSWORD: hello_django
       POSTGRES_USER: hello_django
   mikro:
@@ -15,10 +13,10 @@ services:
     - redis
     - db
     - minio
-    image: jhnnsrs/mikro:next
+    image: jhnnsrs/mikro_next:nightly
     command: bash run-debug.sh
     ports:
-    - 8456:80
+    - 6888:80
     volumes:
     - ./configs/mikro_next.yaml:/workspace/config.yaml
   minio:
@@ -26,9 +24,9 @@ services:
     environment:
       MINIO_ROOT_PASSWORD: e8821a29d189789e39c9922a3bfcfb4a
       MINIO_ROOT_USER: crappygreysetter
-    image: minio/minio:RELEASE.2023-02-10T18-48-39Z
+    image: minio/minio:RELEASE.2025-02-18T16-25-55Z
     ports:
-    - 8457:9000
+    - 6889:9000
   initc:
     depends_on:
       minio:
@@ -37,7 +35,7 @@ services:
       MINIO_HOST: http://minio:9000
       MINIO_ROOT_PASSWORD: e8821a29d189789e39c9922a3bfcfb4a
       MINIO_ROOT_USER: crappygreysetter
-    image: jhnnsrs/init:prod
+    image: jhnnsrs/init:nightly
     volumes:
     - ./configs/minio.yaml:/workspace/config.yaml
 

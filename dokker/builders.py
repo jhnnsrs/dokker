@@ -15,14 +15,15 @@ def mirror(
 
     A mirror deployment is a deployment that copies a local path to a temporary
     directory and runs it from there. This is useful for testing projects that
-    are in production environments but should be tested locally.
+    are in production environments but should be tested locally and isolated
+    from the source directory.
 
     Parameters
     ----------
     local_path : ValidPath
         The path to the project (will be copyied and on tear down deleted)
     health_checks : Optional[List[HealthCheck]], optional
-        _description_, by default None
+        A list of health checks, by default None
 
     Returns
     -------
@@ -73,6 +74,7 @@ def local(
     deployment.down_on_exit = False
     deployment.stop_on_exit = True
     deployment.initialize_on_enter = True
+    deployment.inspect_on_enter = True
     deployment.up_on_enter = True
     deployment.down_on_exit = False
     return deployment

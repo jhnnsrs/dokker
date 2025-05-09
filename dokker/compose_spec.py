@@ -88,9 +88,23 @@ class ComposeConfigService(BaseModel):
         str
             The label of the service.
         """
-        return self.labels.get(label)
+        if not self.labels:
+            raise ValueError(
+                "No labels found in the service. Please check the service configuration."
+            )
+           
+        rlabel = self.labels.get(label)
+        if not rlabel:
+            raise ValueError(f"Label {label} not found in the service.") 
+            
+        return  rlabel
 
     def get_port_for_internal(self, port: int) -> "ComposeServicePort":
+        """Get the port for the internal port."""
+        
+        if not self.ports:
+            raise ValueError("No ports found in the service. Please check the service configuration.")
+        
         for i in self.ports:
             if not isinstance(i, ComposeServicePort):
                 raise Exception("This list contains other items")

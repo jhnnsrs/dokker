@@ -323,12 +323,17 @@ class CLI(KoiledModel):
         """
         full_cmd = self.docker_cmd + ["config", "--format", "json"]
 
-        lines = []
+        stdout_lines = []
 
-        async for x, line in astream_command(full_cmd):
-            lines.append(line)
+        async for source, line in astream_command(full_cmd):
+            if source == "STDERR":
+                continue
+            elif source == "STDOUT":
+                stdout_lines.append(line)
+            else:
+                raise ValueError(f"Unknown source: {source}")
 
-        result = "\n".join(lines)
+        result = "\n".join(stdout_lines)
 
         try:
             return ComposeSpec(**json.loads(result))
