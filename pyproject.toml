@@ -3,7 +3,7 @@ name = "dokker"
 version = "2.0.0"
 description = ""
 authors = [{ name = "jhnnsrs", email = "jhnnsrs@gmail.com" }]
-requires-python = ">=3.9,<4.0"
+requires-python = ">=3.11"
 readme = "README.md"
 dependencies = [
     "koil>=1.0.0",

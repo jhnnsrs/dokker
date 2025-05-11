@@ -12,12 +12,13 @@ from typing import Union
 from koil import unkoil
 from dokker.cli import CLI
 from dokker.loggers.void import VoidLogger
+from dokker.types import LogFunction
 from .log_watcher import LogRoll, LogWatcher
 import aiohttp
 import certifi
 from ssl import SSLContext
 import ssl
-from typing import Any, Optional, List, Union, Callable
+from typing import Optional, List, Union, Callable
 from dokker.errors import NotInitializedError, NotInspectedError, HealthCheckError
 
 
@@ -164,10 +165,11 @@ class Deployment(KoiledModel):
         self._cli = await self.project.ainititialize()
         return self._cli
 
-    async def aretrieve_cli(self):
+    async def aretrieve_cli(self) -> "CLI":
+        """Retrieve the CLI object of the deployment."""
         if self._cli is None:
             if self.auto_initialize:
-                await self.ainitialize()
+                self._cli = await self.ainitialize()
             else:
                 raise NotInitializedError("Deployment not initialized and auto_initialize is False. Call await deployment.ainitialize() first.")
 
@@ -267,7 +269,10 @@ class Deployment(KoiledModel):
         """
 
         if not self._spec:
-            await self.ainspect()
+            self._spec = await self.ainspect()
+
+        if not self._cli:
+            self._cli = await self.ainitialize()
 
         try:
             await check.acheck(self._spec)
@@ -284,7 +289,7 @@ class Deployment(KoiledModel):
                 async for log in self._cli.astream_docker_logs(services=[check.service]):
                     logs.append(log)
 
-                raise HealthCheckError(f"Health check failed after {check.max_retries} retries. Logs:\n" + "\n".join(i for x, i in logs)) from e
+                raise HealthCheckError(f"Health check failed after {check.max_retries} retries. Logs:\n" + "\n".join(i for _, i in logs)) from e
 
     async def acheck_health(self, timeout: int = 3, retry: int = 0, services: Optional[List[str]] = None) -> None:
         """Check the health of the deployment.
@@ -333,7 +338,7 @@ class Deployment(KoiledModel):
         wait_for_first_log: bool = True,
         wait_for_logs: bool = False,
         wait_for_logs_timeout: int = 10,
-        log_function: Optional[Callable] = None,
+        log_function: Optional[LogFunction] = None,
         append_to_traceback: bool = True,
         capture_stdout: bool = True,
         rich_traceback: bool = True,
@@ -480,7 +485,7 @@ class Deployment(KoiledModel):
 
         if await_health:
             await asyncio.sleep(await_health_timeout)
-            await self.await_for_healthz(services=services)
+            await self.acheck_health(services=services)
 
         return logs
 
@@ -605,7 +610,7 @@ class Deployment(KoiledModel):
         """
         return unkoil(self.aremove)
 
-    def down(self) -> List[str]:
+    def down(self) -> LogRoll:
         """Down the deployment.
 
         Will call docker-compose down on the deployment.
@@ -619,7 +624,7 @@ class Deployment(KoiledModel):
         """
         return unkoil(self.adown)
 
-    async def astop(self) -> List[str]:
+    async def astop(self) -> LogRoll:
         """Stop the deployment.
 
         Will call docker-compose stop on the deployment.
@@ -639,7 +644,7 @@ class Deployment(KoiledModel):
 
         return logs
 
-    def stop(self) -> List[str]:
+    def stop(self) -> LogRoll:
         """Stop the deployment.
 
         Will call docker-compose stop on the deployment.
@@ -688,7 +693,7 @@ class Deployment(KoiledModel):
 
         if self.health_on_enter:
             if self.health_checks:
-                await self.await_for_healthz()
+                await self.acheck_health()
 
         return self
 
@@ -707,6 +712,7 @@ class Deployment(KoiledModel):
             await self.adown()
 
         if self.tear_down_on_exit:
-            await self.project.atear_down(self._cli)
+            if self._cli:
+                await self.project.atear_down(self._cli)
 
         self._cli = None

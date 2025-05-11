@@ -68,7 +68,7 @@ class ComposeServicePort(BaseModel):
 class ComposeServiceVolume(BaseModel):
     """Volume configuration for a service."""
 
-    bind: Optional[dict] = None
+    bind: Optional[dict[str, Any]] = None
     source: Optional[str] = None
     target: Optional[str] = None
     type: Optional[str] = None
@@ -124,8 +124,6 @@ class ComposeConfigService(BaseModel):
             raise ValueError("No ports found in the service. Please check the service configuration.")
 
         for i in self.ports:
-            if not isinstance(i, ComposeServicePort):
-                raise Exception("This list contains other items")
             if i.target == port:
                 return i
 

@@ -1,5 +1,5 @@
 import asyncio
-from typing import List
+from typing import List, Union
 from dokker.types import LogStream
 from dokker.errors import DokkerError
 
@@ -12,7 +12,7 @@ class CommandError(DokkerError):
 
 async def _aread_stream(
     stream: asyncio.StreamReader,
-    queue: asyncio.Queue,
+    queue: asyncio.Queue[Union[tuple[str, str], None]],
     name: str,
 ) -> None:
     """Asynchronously read a stream and put lines into a queue."""
@@ -43,13 +43,15 @@ async def astream_command(command: List[str]) -> LogStream:
     if proc.stdout is None or proc.stderr is None:
         raise CommandError("Could not create the subprocess.")
 
-    queue = asyncio.Queue()  # type: asyncio.Queue[tuple[str, str]]
+    queue: asyncio.Queue[Union[tuple[str, str], None]] = asyncio.Queue()
 
     # cannot use type annotation because of python 3.8
     # Create and start tasks for reading each stream
 
+    readers: list[asyncio.Task[None]] = []
+
     try:
-        collected_logs = []
+        collected_logs: list[str] = []
         readers = [
             asyncio.create_task(_aread_stream(proc.stdout, queue, "STDOUT")),
             asyncio.create_task(_aread_stream(proc.stderr, queue, "STDERR")),
@@ -76,6 +78,8 @@ async def astream_command(command: List[str]) -> LogStream:
         await proc.wait()
 
         if proc.returncode != 0:
+            # WHen the command fails, we need to check the logs
+            # and raise an error with the logs
             logs = "\n".join(collected_logs) if collected_logs else "No Logs"
 
             raise CommandError(f"Command {full_cmd} failed with return code {proc.returncode}: \n{logs}")

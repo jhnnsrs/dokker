@@ -1,12 +1,15 @@
 from types import TracebackType
 from koil.composition import KoiledModel
 import asyncio
-from typing import Optional, List, Callable, Self, Type, Union, Generator
+from typing import Optional, List, Self, Tuple, Type, Union, Generator
 from dokker.cli import CLIBearer
 from pydantic import Field
+from typing import List
+
+from dokker.types import LogFunction
 
 
-def format_log_watcher_message(watcher: "LogWatcher", exc_val: Exception, rich: bool = True) -> str:
+def format_log_watcher_message(watcher: "LogWatcher", exc_val: Optional[BaseException], rich: bool = True) -> str:
     """Formats the log watcher message for the exception."""
     extra_info = map(
         lambda x: x[1] if x[0] == "STDERR" or watcher.capture_stdout else "",
@@ -18,7 +21,7 @@ def format_log_watcher_message(watcher: "LogWatcher", exc_val: Exception, rich: 
     return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info_str}"
 
 
-class LogRoll(list):
+class LogRoll(list[tuple[str, str]]):
     """A class to roll logs from the log watcher."""
 
     @property
@@ -72,15 +75,15 @@ class LogWatcher(KoiledModel):
     wait_for_logs: bool = False
     wait_for_logs_timeout: int = 10
     collected_logs: LogRoll = Field(default_factory=LogRoll)
-    log_function: Optional[Callable] = None
+    log_function: Optional[LogFunction] = None
     append_to_traceback: bool = True
     capture_stdout: bool = True
     rich_traceback: bool = True
 
-    _watch_task: Optional[asyncio.Task] = None
-    _just_one_log: Optional[asyncio.Future] = None
+    _watch_task: Optional[asyncio.Task[None]] = None
+    _just_one_log: Optional[asyncio.Future[bool]] = None
 
-    async def aon_logs(self, log: str) -> None:
+    async def aon_logs(self, log: Tuple[str, str]) -> None:
         """Asynchronous function to handle logs."""
         if self.log_function:
             if asyncio.iscoroutinefunction(self.log_function):
@@ -91,7 +94,7 @@ class LogWatcher(KoiledModel):
     async def awatch_logs(self) -> None:
         """Asynchronous function to watch logs."""
         cli = await self.cli_bearer.aget_cli()
-        async for log in cli.astream_docker_logs(
+        async for logtuple in cli.astream_docker_logs(
             tail=str(self.tail) if self.tail else None,
             follow=self.follow,
             no_log_prefix=self.no_log_prefix,
@@ -102,8 +105,8 @@ class LogWatcher(KoiledModel):
         ):
             if self._just_one_log is not None and not self._just_one_log.done():
                 self._just_one_log.set_result(True)
-            await self.aon_logs(log)
-            self.collected_logs.append(log)
+            await self.aon_logs(logtuple)
+            self.collected_logs.append(logtuple)
 
     async def __aenter__(self) -> Self:
         """Asynchronous context manager to enter the log watcher."""

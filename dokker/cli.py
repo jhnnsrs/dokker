@@ -64,8 +64,8 @@ class CLI(KoiledModel):
     client_call: List[str] = Field(default_factory=lambda: ["docker", "compose"])
 
     @field_validator("compose_files")
-    def _validate_compose_files(cls, v: str) -> str:
-        x = []
+    def _validate_compose_files(cls, v: str) -> list[ValidPath]:
+        x: list[ValidPath] = []
         for vo in v:
             if os.path.exists(vo):
                 x.append(vo)
@@ -318,7 +318,7 @@ class CLI(KoiledModel):
         """
         full_cmd = self.docker_cmd + ["config", "--format", "json"]
 
-        stdout_lines = []
+        stdout_lines: list[str] = []
 
         async for source, line in astream_command(full_cmd):
             if source == "STDERR":
