@@ -1,7 +1,15 @@
 # CHANGELOG
 
 
+## v2.1.1 (2025-05-11)
+
+
 ## v2.1.0 (2025-05-11)
+
+### Bug Fixes
+
+- More type support
+  ([`e045cc1`](https://github.com/jhnnsrs/dokker/commit/e045cc101931ae95412e26c16b577ed55509c0ec))
 
 
 ## v2.0.0 (2025-05-09)
