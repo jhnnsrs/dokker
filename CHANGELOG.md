@@ -1,7 +1,15 @@
 # CHANGELOG
 
 
+## v2.0.0 (2025-05-09)
+
+
 ## v1.0.0 (2025-05-09)
+
+### Features
+
+- Update README to clarify project status and contribution guidelines
+  ([`5f81747`](https://github.com/jhnnsrs/dokker/commit/5f81747ddb0e9831672b24b231337579070e45b9))
 
 
 ## v0.2.0 (2025-05-09)
