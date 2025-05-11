@@ -15,6 +15,7 @@ services:
     - minio
     image: jhnnsrs/mikro_next:nightly
     command: bash run-debug.sh
+    stop_grace_period: 1s
     ports:
     - 6888:80
     volumes:

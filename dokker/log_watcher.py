@@ -1,73 +1,64 @@
+from types import TracebackType
 from koil.composition import KoiledModel
 import asyncio
-from typing import Optional, List, Callable, Union
+from typing import Optional, List, Callable, Self, Type, Union, Generator
 from dokker.cli import CLIBearer
 from pydantic import Field
 
-try:
-    from rich import panel
 
-    def format_log_watcher_message(watcher: "LogWatcher", exc_val, rich=True) -> str:
-        extra_info = map(
-            lambda x: x[1] if x[0] == "STDERR" or watcher.capture_stdout else "",
-            watcher.collected_logs,
-        )
-        # Ensure compatibility with different exception types
+def format_log_watcher_message(watcher: "LogWatcher", exc_val: Exception, rich: bool = True) -> str:
+    """Formats the log watcher message for the exception."""
+    extra_info = map(
+        lambda x: x[1] if x[0] == "STDERR" or watcher.capture_stdout else "",
+        watcher.collected_logs,
+    )
+    # Ensure compatibility with different exception types
 
-        extra_info_str = "\n".join(extra_info)
-
-        if not rich:
-            return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info_str}"
-        else:
-            return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info_str}"
-
-except ImportError:
-
-    def format_log_watcher_message(watcher: "LogWatcher", exc_val, rich=True) -> str:
-        extra_info = map(
-            lambda x: x[1] if x[0] == "STDERR" or watcher.capture_stdout else "",
-            watcher.collected_logs,
-        )
-        # Ensure compatibility with different exception types
-
-        extra_info_str = "\n".join(extra_info)
-        return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info_str}"
+    extra_info_str = "\n".join(extra_info)
+    return f"{str(exc_val)}\n\nDuring the execution Logwatcher captured these logs from the services {watcher.services}:\n{extra_info_str}"
 
 
 class LogRoll(list):
+    """A class to roll logs from the log watcher."""
 
     @property
-    def stdout_gen(self):
-
+    def stdout_gen(self) -> Generator[str, None, None]:
+        """Generator for stdout logs."""
         for log, x in self:
             if log == "STDOUT":
                 yield x
 
     @property
-    def stderr_gen(self):
-
+    def stderr_gen(self) -> Generator[str, None, None]:
+        """Generator for stderr logs."""
         for log, x in self:
             if log == "STDOUT":
                 yield x
 
     @property
-    def stderr_list(self):
+    def stderr_list(self) -> List[str]:
+        """List of stderr logs."""
         return list(self.stderr_gen)
 
     @property
-    def stdout_list(self):
+    def stdout_list(self) -> List[str]:
+        """List of stdout logs."""
         return list(self.stdout_gen)
 
     @property
-    def stdout(self):
+    def stdout(self) -> str:
+        """String of stdout logs joined by new lines."""
         return "\n".join(self.stdout_gen)
 
     @property
-    def stderr(self):
+    def stderr(self) -> str:
+        """String of stderr logs joined by new lines."""
         return "\n".join(self.stderr_gen)
 
 
 class LogWatcher(KoiledModel):
+    """A class to watch logs from a Docker container."""
+
     cli_bearer: CLIBearer
     tail: Optional[int] = None
     follow: bool = True
@@ -89,14 +80,16 @@ class LogWatcher(KoiledModel):
     _watch_task: Optional[asyncio.Task] = None
     _just_one_log: Optional[asyncio.Future] = None
 
-    async def aon_logs(self, log: str):
+    async def aon_logs(self, log: str) -> None:
+        """Asynchronous function to handle logs."""
         if self.log_function:
             if asyncio.iscoroutinefunction(self.log_function):
                 await self.log_function(log)
             else:
                 self.log_function(log)
 
-    async def awatch_logs(self):
+    async def awatch_logs(self) -> None:
+        """Asynchronous function to watch logs."""
         cli = await self.cli_bearer.aget_cli()
         async for log in cli.astream_docker_logs(
             tail=str(self.tail) if self.tail else None,
@@ -112,7 +105,8 @@ class LogWatcher(KoiledModel):
             await self.aon_logs(log)
             self.collected_logs.append(log)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
+        """Asynchronous context manager to enter the log watcher."""
         self.collected_logs = LogRoll()
         self._just_one_log = asyncio.Future()
         self._watch_task = asyncio.create_task(self.awatch_logs())
@@ -124,17 +118,16 @@ class LogWatcher(KoiledModel):
 
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], traceback: Optional[TracebackType]) -> None:
+        """Asynchronous context manager to exit the log watcher."""
         if exc_type is not None and self.append_to_traceback:
-            new_message = format_log_watcher_message(
-                self, exc_val, rich=self.rich_traceback
-            )
+            new_message = format_log_watcher_message(self, exc_val, rich=self.rich_traceback)
             try:
                 new_exc = exc_type(new_message)
-            except:
+            except:  # noqa: E722
                 new_exc = Exception(new_message)
 
-            raise new_exc.with_traceback(exc_tb) from exc_val
+            raise new_exc.with_traceback(traceback) from exc_val
 
         if self.wait_for_logs:
             if self._just_one_log is not None:

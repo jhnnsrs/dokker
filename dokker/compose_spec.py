@@ -6,25 +6,35 @@ from typing_extensions import Annotated
 
 
 class ServicePlacement(BaseModel):
+    """Service placement constraints."""
+
     constraints: Optional[List[str]] = None
 
 
 class ResourcesLimits(BaseModel):
+    """Resource limits for a service."""
+
     cpus: Optional[float] = None
     memory: Optional[int] = None
 
 
 class ResourcesReservation(BaseModel):
+    """Resource reservations for a service."""
+
     cpus: Union[float, int, None] = None
     memory: Optional[int] = None
 
 
 class ServiceResources(BaseModel):
+    """Resource configuration for a service."""
+
     limits: Optional[ResourcesLimits] = None
     reservations: Optional[ResourcesReservation] = None
 
 
 class ServiceDeployConfig(BaseModel):
+    """Service deployment configuration."""
+
     labels: Optional[Dict[str, str]] = None
     resources: Optional[ServiceResources] = None
     placement: Optional[ServicePlacement] = None
@@ -32,10 +42,14 @@ class ServiceDeployConfig(BaseModel):
 
 
 class DependencyCondition(BaseModel):
+    """Dependency condition for a service."""
+
     condition: Optional[str] = None
 
 
 class ComposeServiceBuild(BaseModel):
+    """Build configuration for a service."""
+
     context: Optional[Path] = None
     dockerfile: Optional[Path] = None
     args: Optional[Dict[str, Any]] = None
@@ -43,6 +57,8 @@ class ComposeServiceBuild(BaseModel):
 
 
 class ComposeServicePort(BaseModel):
+    """Port configuration for a service."""
+
     mode: Optional[str] = None
     protocol: Optional[str] = None
     published: Optional[int] = None
@@ -50,6 +66,8 @@ class ComposeServicePort(BaseModel):
 
 
 class ComposeServiceVolume(BaseModel):
+    """Volume configuration for a service."""
+
     bind: Optional[dict] = None
     source: Optional[str] = None
     target: Optional[str] = None
@@ -57,6 +75,8 @@ class ComposeServiceVolume(BaseModel):
 
 
 class ComposeConfigService(BaseModel):
+    """Service configuration for a Docker Compose file."""
+
     deploy: Optional[ServiceDeployConfig] = None
     blkio_config: Optional[Any] = None
     cpu_count: Optional[float] = None
@@ -89,22 +109,20 @@ class ComposeConfigService(BaseModel):
             The label of the service.
         """
         if not self.labels:
-            raise ValueError(
-                "No labels found in the service. Please check the service configuration."
-            )
-           
+            raise ValueError("No labels found in the service. Please check the service configuration.")
+
         rlabel = self.labels.get(label)
         if not rlabel:
-            raise ValueError(f"Label {label} not found in the service.") 
-            
-        return  rlabel
+            raise ValueError(f"Label {label} not found in the service.")
+
+        return rlabel
 
     def get_port_for_internal(self, port: int) -> "ComposeServicePort":
         """Get the port for the internal port."""
-        
+
         if not self.ports:
             raise ValueError("No ports found in the service. Please check the service configuration.")
-        
+
         for i in self.ports:
             if not isinstance(i, ComposeServicePort):
                 raise Exception("This list contains other items")
@@ -115,6 +133,8 @@ class ComposeConfigService(BaseModel):
 
 
 class ComposeConfigNetwork(BaseModel):
+    """Network configuration for a Docker Compose file."""
+
     driver: Optional[str] = None
     name: Optional[str] = None
     external: Optional[bool] = False
@@ -127,6 +147,8 @@ class ComposeConfigNetwork(BaseModel):
 
 
 class ComposeConfigVolume(BaseModel):
+    """Volume configuration for a Docker Compose file."""
+
     driver: Optional[str] = None
     driver_opts: Optional[Dict[str, Any]] = None
     external: Optional[bool] = None
@@ -135,13 +157,11 @@ class ComposeConfigVolume(BaseModel):
 
 
 class ComposeSpec(BaseModel):
+    """Docker Compose specification."""
+
     services: Optional[Dict[str, ComposeConfigService]] = None
-    networks: Annotated[
-        Optional[Dict[str, ComposeConfigNetwork]], Field(default_factory=dict)
-    ]
-    volumes: Annotated[
-        Optional[Dict[str, ComposeConfigVolume]], Field(default_factory=dict)
-    ]
+    networks: Annotated[Optional[Dict[str, ComposeConfigNetwork]], Field(default_factory=dict)]
+    volumes: Annotated[Optional[Dict[str, ComposeConfigVolume]], Field(default_factory=dict)]
     configs: Any = None
     secrets: Any = None
 
@@ -167,14 +187,3 @@ class ComposeSpec(BaseModel):
             return service
 
         return self.services[list(self.services.keys())[0]]
-
-
-class ComposeProject(BaseModel):
-    name: Optional[str]
-    created: Optional[int] = 0
-    running: Optional[int] = 0
-    restarting: Optional[int] = 0
-    exited: Optional[int] = 0
-    paused: Optional[int] = 0
-    dead: Optional[int] = 0
-    config_files: Optional[List[Path]] = None

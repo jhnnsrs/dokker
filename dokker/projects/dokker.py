@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Union
+from typing import Union
 from pathlib import Path
 from dokker.cli import CLI
 from typing import Dict, Any, Optional
@@ -27,9 +27,7 @@ class DokkerProject(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    base_dir: ValidPath = Field(
-        default_factory=lambda: os.path.join(os.getcwd(), ".dokker")
-    )
+    base_dir: ValidPath = Field(default_factory=lambda: os.path.join(os.getcwd(), ".dokker"))
     name: str
     _outs: Optional[Dict[str, Any]] = None
     _project_dir: Optional[ValidPath] = None
@@ -46,15 +44,11 @@ class DokkerProject(BaseModel):
 
         self._project_dir = os.path.join(self.base_dir, self.name)
         if not os.path.exists(self._project_dir):
-            raise DokkerProjectError(
-                f"No project found with the name {self.name} in {self.base_dir}. Available projects: {os.listdir(self.base_dir)}"
-            )
+            raise DokkerProjectError(f"No project found with the name {self.name} in {self.base_dir}. Available projects: {os.listdir(self.base_dir)}")
 
         compose_file = os.path.join(self._project_dir, "docker-compose.yaml")
         if not os.path.exists(compose_file):
-            raise Exception(
-                "No docker-compose.yml found in the template. It appears that the template is not a valid dokker template."
-            )
+            raise Exception("No docker-compose.yml found in the template. It appears that the template is not a valid dokker template.")
 
         return CLI(
             compose_files=[compose_file],

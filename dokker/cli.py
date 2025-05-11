@@ -6,13 +6,9 @@ from typing import (
     runtime_checkable,
     Dict,
     Literal,
-    AsyncIterator,
-    Tuple,
 )
 from pydantic import Field, field_validator
 from koil.composition import KoiledModel
-from pathlib import Path
-import asyncio
 from datetime import timedelta
 from .compose_spec import ComposeSpec
 import json
@@ -59,9 +55,7 @@ class CLI(KoiledModel):
     tlscert: Optional[ValidPath] = None
     tlskey: Optional[ValidPath] = None
     tlsverify: Optional[bool] = None
-    compose_files: List[ValidPath] = Field(
-        default_factory=lambda: ["docker-compose.yml"]
-    )
+    compose_files: List[ValidPath] = Field(default_factory=lambda: ["docker-compose.yml"])
     compose_profiles: List[ValidPath] = Field(default_factory=list)
     compose_env_file: Optional[ValidPath] = Field(default=".env")
     compose_project_name: Optional[str] = None
@@ -71,7 +65,6 @@ class CLI(KoiledModel):
 
     @field_validator("compose_files")
     def _validate_compose_files(cls, v: str) -> str:
-
         x = []
         for vo in v:
             if os.path.exists(vo):
@@ -134,6 +127,7 @@ class CLI(KoiledModel):
         until: Optional[str] = None,
         services: Union[str, List[str]] = [],
     ) -> LogStream:
+        """Runs the docker logs command asynchronously."""
         full_cmd = self.docker_cmd + ["logs", "--no-color"]
         if tail is not None:
             full_cmd += ["--tail", tail]
@@ -163,6 +157,7 @@ class CLI(KoiledModel):
         timeout: Optional[int] = None,
         volumes: bool = False,
     ) -> LogStream:
+        """Runs the docker-compose down command asynchronously."""
         full_cmd = self.docker_cmd + ["down"]
         if remove_orphans:
             full_cmd.append("--remove-orphans")
@@ -183,6 +178,7 @@ class CLI(KoiledModel):
         include_deps: bool = False,
         quiet: bool = False,
     ) -> LogStream:
+        """Runs the docker-compose pull command asynchronously."""
         full_cmd = self.docker_cmd + ["pull"]
         if ignore_pull_failures:
             full_cmd.append("--ignore-pull-failures")
@@ -203,8 +199,8 @@ class CLI(KoiledModel):
         self,
         services: Union[str, List[str], None] = None,
         timeout: Union[int, timedelta, None] = None,
-        stream_logs: bool = False,
     ) -> LogStream:
+        """Runs the docker-compose stop command asynchronously."""
         full_cmd = self.docker_cmd + ["stop"]
         if timeout is not None:
             if isinstance(timeout, timedelta):
@@ -224,6 +220,7 @@ class CLI(KoiledModel):
         self,
         services: Union[str, List[str], None] = None,
     ) -> LogStream:
+        """Runs the docker-compose restart command asynchronously."""
         full_cmd = self.docker_cmd + ["restart"]
 
         if services:
@@ -256,11 +253,9 @@ class CLI(KoiledModel):
         pull: Literal["always", "missing", "never", None] = None,
         stream_logs: bool = False,
     ) -> LogStream:
+        """Runs the docker-compose up command asynchronously."""
         if quiet and stream_logs:
-            raise ValueError(
-                "It's not possible to have stream_logs=True and quiet=True at the same time. "
-                "Only one can be activated at a time."
-            )
+            raise ValueError("It's not possible to have stream_logs=True and quiet=True at the same time. Only one can be activated at a time.")
         full_cmd = self.docker_cmd + ["up"]
         if build:
             full_cmd.append("--build")
@@ -338,6 +333,4 @@ class CLI(KoiledModel):
         try:
             return ComposeSpec(**json.loads(result))
         except Exception as e:
-            raise CLIError(
-                f"Could not inspect! Error while parsing the json: {result}"
-            ) from e
+            raise CLIError(f"Could not inspect! Error while parsing the json: {result}") from e

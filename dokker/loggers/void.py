@@ -4,8 +4,6 @@ from pydantic import BaseModel
 class VoidLogger(BaseModel):
     """A logger that omits all logs"""
 
-    should_print: bool = True
-
     def on_pull(self, log: str) -> None:
         """A method for logs
 

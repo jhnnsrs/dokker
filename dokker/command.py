@@ -1,9 +1,12 @@
 import asyncio
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple, Union
+from typing import List
 from dokker.types import LogStream
+from dokker.errors import DokkerError
 
 
-class CommandError(Exception):
+class CommandError(DokkerError):
+    """An error raised when a command fails to execute."""
+
     pass
 
 
@@ -12,6 +15,7 @@ async def _aread_stream(
     queue: asyncio.Queue,
     name: str,
 ) -> None:
+    """Asynchronously read a stream and put lines into a queue."""
     async for line in stream:
         await queue.put((name, line.decode("utf-8").strip()))
 
@@ -19,6 +23,13 @@ async def _aread_stream(
 
 
 async def astream_command(command: List[str]) -> LogStream:
+    """Asynchronously stream the output of a command.
+
+    Parameters
+    ----------
+    command : List[str]
+        The command to run as a list of strings.
+    """
     # Create the subprocess using asyncio's subprocess
 
     full_cmd = " ".join(map(str, command))
@@ -67,9 +78,7 @@ async def astream_command(command: List[str]) -> LogStream:
         if proc.returncode != 0:
             logs = "\n".join(collected_logs) if collected_logs else "No Logs"
 
-            raise CommandError(
-                f"Command {full_cmd} failed with return code {proc.returncode}: \n{logs}"
-            )
+            raise CommandError(f"Command {full_cmd} failed with return code {proc.returncode}: \n{logs}")
 
     except asyncio.CancelledError:
         # Handle cancellation request

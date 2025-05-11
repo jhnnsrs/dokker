@@ -1,4 +1,4 @@
-from typing import Protocol, runtime_checkable, Dict, Any
+from typing import Protocol, runtime_checkable
 from .cli import CLI
 
 
