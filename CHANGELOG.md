@@ -1,7 +1,15 @@
 # CHANGELOG
 
 
+## v2.1.0 (2025-05-11)
+
+
 ## v2.0.0 (2025-05-09)
+
+### Features
+
+- Add types everywhere
+  ([`75fc6ba`](https://github.com/jhnnsrs/dokker/commit/75fc6ba6889e045b752815c8eb9691993219fef4))
 
 
 ## v1.0.0 (2025-05-09)
