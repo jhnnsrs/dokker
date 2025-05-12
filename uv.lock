@@ -2,15 +2,6 @@ version = 1
 requires-python = ">=3.11"
 
 [[package]]
-name = "aioconsole"
-version = "0.7.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e5/f4/f156826819b4136b3fe9fac1b7707f6f241c871aaef13b4a16932e39156d/aioconsole-0.7.1.tar.gz", hash = "sha256:a3e52428d32623c96746ec3862d97483c61c12a2f2dfba618886b709415d4533", size = 28493 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/08/17/98008117ec3f484259f11a8a96cb5601949546a4de43102b99cffa1138e5/aioconsole-0.7.1-py3-none-any.whl", hash = "sha256:1867a7cc86897a87398e6e6fba302738548f1cf76cbc6c76e06338e091113bdc", size = 30474 },
-]
-
-[[package]]
 name = "aiohappyeyeballs"
 version = "2.4.4"
 source = { registry = "https://pypi.org/simple" }
@@ -267,19 +258,13 @@ wheels = [
 
 [[package]]
 name = "dokker"
-version = "2.0.0"
+version = "2.1.1"
 source = { editable = "." }
 dependencies = [
-    { name = "aioconsole" },
     { name = "aiohttp" },
     { name = "certifi" },
     { name = "koil" },
     { name = "pydantic" },
-]
-
-[package.optional-dependencies]
-cookiecutter = [
-    { name = "cookiecutter" },
 ]
 
 [package.dev-dependencies]
@@ -293,10 +278,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aioconsole", specifier = ">=0.7.0,<0.8" },
     { name = "aiohttp", specifier = ">=3.9.1,<4" },
-    { name = "certifi", specifier = ">=2023.11.17,<2024" },
-    { name = "cookiecutter", marker = "extra == 'cookiecutter'", specifier = ">=2.5.0,<3" },
+    { name = "certifi", specifier = ">=2023.11.17" },
     { name = "koil", specifier = ">=1.0.0" },
     { name = "pydantic", specifier = ">2" },
 ]
