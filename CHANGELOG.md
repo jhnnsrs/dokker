@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.1.2 (2025-05-12)
+
+### Bug Fixes
+
+- Loosen certify restriction
+  ([`1cb1aa1`](https://github.com/jhnnsrs/dokker/commit/1cb1aa1f17c0cba82a5d3eb24e13b6b05cdc02ee))
+
+
 ## v2.1.1 (2025-05-11)
 
 
