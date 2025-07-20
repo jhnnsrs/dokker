@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.2.0 (2025-07-20)
+
+### Features
+
+- Add run comman
+  ([`69527c9`](https://github.com/jhnnsrs/dokker/commit/69527c96653b2842d812ae748cb1dd35fdd70280))
+
+
 ## v2.1.2 (2025-05-12)
 
 ### Bug Fixes
