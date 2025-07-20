@@ -56,7 +56,7 @@ class CLI(KoiledModel):
     tlskey: Optional[ValidPath] = None
     tlsverify: Optional[bool] = None
     compose_files: List[ValidPath] = Field(default_factory=lambda: ["docker-compose.yml"])
-    compose_profiles: List[ValidPath] = Field(default_factory=list)
+    compose_profiles: List[ValidPath] = Field(default_factory=lambda: [])
     compose_env_file: Optional[ValidPath] = Field(default=".env")
     compose_project_name: Optional[str] = None
     compose_project_directory: Optional[ValidPath] = None
@@ -299,6 +299,24 @@ class CLI(KoiledModel):
             if isinstance(services, str):
                 services = [services]
             full_cmd += services
+
+        async for line in astream_command(full_cmd):
+            yield line
+
+    async def astream_run(self, service: str, command: List[str] | str, remove: bool = True) -> LogStream:
+        """Runs the docker-compose run command asynchronously."""
+        full_cmd = self.docker_cmd + ["run"]
+        if isinstance(command, str):
+            command = [command]
+        if not command:
+            raise ValueError("Command must be a non-empty list or string.")
+
+        if remove:
+            full_cmd.append("--rm")
+        if service:
+            full_cmd.append(service)
+        if command:
+            full_cmd += command
 
         async for line in astream_command(full_cmd):
             yield line

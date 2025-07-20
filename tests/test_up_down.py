@@ -1,3 +1,4 @@
+import asyncio
 from dokker import local, HealthCheck
 import pytest
 
@@ -12,6 +13,9 @@ def test_up_down():
         # do something with redis
         
         l.up()
+        
+        answer = l.run("mikro", "echo 'hello world'")
+        assert "hello world" in answer.stdout, f"Expected 'hello world', got {answer}"
 
         print("hello world")
 
@@ -31,7 +35,15 @@ async def test_up_down_async():
         await l.aup()
         
         await l.acheck_health()
+        
+        one_task = asyncio.create_task(l.arun("mikro", "echo 'hello world'"))
+        two_task = asyncio.create_task(l.arun("mikro", "echo 'hello world'"))
 
         print("hello world")
+        
+        answers = await asyncio.gather(one_task, two_task)
+        for answer in answers:
+            assert "hello world" in answer.stdout, f"Expected 'hello world', got {answer}"
+            
 
         pass

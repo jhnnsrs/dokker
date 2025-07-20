@@ -4,7 +4,6 @@ import asyncio
 from typing import Optional, List, Self, Tuple, Type, Union, Generator
 from dokker.cli import CLIBearer
 from pydantic import Field
-from typing import List
 
 from dokker.types import LogFunction
 

@@ -8,9 +8,7 @@ if TYPE_CHECKING:
     pass
 
 
-def mirror(
-    local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = None
-) -> Deployment:
+def mirror(local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = None) -> Deployment:
     """Creates a Mirro Deployment
 
     A mirror deployment is a deployment that copies a local path to a temporary
@@ -158,7 +156,7 @@ def testing(
 
     deployment.pull_on_enter = True
     deployment.initialize_on_enter = True
-    deployment.up_on_enter = True
+    deployment.up_on_enter = False
     deployment.down_on_exit = True
     deployment.stop_on_exit = True
     deployment.tear_down_on_exit = True

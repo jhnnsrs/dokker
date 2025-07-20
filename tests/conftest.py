@@ -1,10 +1,9 @@
+from typing import Generator
 from dokker import local, HealthCheck, Deployment
 import pytest
 
 @pytest.fixture(scope="session")
-def composed_project() -> Deployment:
-    
-    
+def composed_project() -> Generator[Deployment, None, None]:
     with local(
         "tests/configs/docker-compose.yaml",
         health_checks=[

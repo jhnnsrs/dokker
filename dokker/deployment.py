@@ -35,13 +35,9 @@ class HealthCheck(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    url: Union[str, Callable[[ComposeSpec], str]] = Field(
-        description="The url to check. Can be a string or a callable that takes the compose spec as an argument and returns a string."
-    )
+    url: Union[str, Callable[[ComposeSpec], str]] = Field(description="The url to check. Can be a string or a callable that takes the compose spec as an argument and returns a string.")
     service: str = Field(description="The service to check.")
-    max_retries: int = Field(
-        default=3, description="The maximum number of retries before failing."
-    )
+    max_retries: int = Field(default=3, description="The maximum number of retries before failing.")
     timeout: int = Field(default=10, description="The timeout between retries.")
     error_with_logs: bool = Field(
         default=True,
@@ -80,9 +76,7 @@ class HealthCheck(BaseModel):
             try:
                 async with session.get(url) as resp:
                     if resp.status not in self.valid_statuses:
-                        raise HealthCheckError(
-                            f"Status is not in valid statuses. Got {resp.status}, wants on of {self.valid_statuses} "
-                        )
+                        raise HealthCheckError(f"Status is not in valid statuses. Got {resp.status}, wants on of {self.valid_statuses} ")
                     return await resp.text()
             except aiohttp.http_exceptions.BadHttpMessage as e:
                 raise HealthCheckError("Health test Failed") from e
@@ -121,7 +115,7 @@ class Deployment(KoiledModel):
     project: Project = Field(default_factory=Project)
 
     health_checks: List[HealthCheck] = Field(
-        default_factory=list,
+        default_factory=lambda: [],
         description="A list of health checks to run on the deployment. These are run when the deployment is up and running.",
     )
     initialize_on_enter: bool = Field(
@@ -205,9 +199,7 @@ class Deployment(KoiledModel):
             If the deployment has not been inspected.
         """
         if self._spec is None:
-            raise NotInspectedError(
-                "Deployment not inspected. Call await deployment.ainspect() first."
-            )
+            raise NotInspectedError("Deployment not inspected. Call await deployment.ainspect() first.")
         return self._spec
 
     async def ainitialize(self) -> "CLI":
@@ -230,11 +222,53 @@ class Deployment(KoiledModel):
             if self.auto_initialize:
                 self._cli = await self.ainitialize()
             else:
-                raise NotInitializedError(
-                    "Deployment not initialized and auto_initialize is False. Call await deployment.ainitialize() first."
-                )
+                raise NotInitializedError("Deployment not initialized and auto_initialize is False. Call await deployment.ainitialize() first.")
 
         return self._cli
+
+    async def arun(self, service: str, command: List[str] | str) -> LogRoll:
+        """Run a command in a service.
+
+        Will run the given command in the given service and return the logs.
+
+        Parameters
+        ----------
+        service : str
+            The name of the service to run the command in.
+        command : List[str]
+            The command to run as a list of strings.
+
+        Returns
+        -------
+        LogRoll
+            The logs of the command.
+        """
+        cli = await self.aretrieve_cli()
+        logs = LogRoll()
+        async for log in cli.astream_run(service=service, command=command):
+            logs.append(log)
+            self.logger.on_logs(log)
+        return logs
+
+    def run(self, service: str, command: List[str] | str) -> LogRoll:
+        """Run a command in a service. (sync)
+
+        Will run the given command in the given service and return the logs.
+        This method is called automatically when using the deployment as a context manager.
+
+        Parameters
+        ----------
+        service : str
+            The name of the service to run the command in.
+        command : List[str]
+            The command to run as a list of strings.
+
+        Returns
+        -------
+        LogRoll
+            The logs of the command.
+        """
+        return unkoil(self.arun, service=service, command=command)
 
     async def ainspect(self) -> ComposeSpec:
         """Inspect the deployment.
@@ -343,25 +377,16 @@ class Deployment(KoiledModel):
                 await self.arun_check(check, retry=retry + 1)
             else:
                 if not check.error_with_logs:
-                    raise HealthCheckError(
-                        f"Health check failed after {check.max_retries} retries. Logs are disabled."
-                    ) from e
+                    raise HealthCheckError(f"Health check failed after {check.max_retries} retries. Logs are disabled.") from e
 
                 logs = LogRoll()
 
-                async for log in self._cli.astream_docker_logs(
-                    services=[check.service]
-                ):
+                async for log in self._cli.astream_docker_logs(services=[check.service]):
                     logs.append(log)
 
-                raise HealthCheckError(
-                    f"Health check failed after {check.max_retries} retries. Logs:\n"
-                    + "\n".join(i for _, i in logs)
-                ) from e
+                raise HealthCheckError(f"Health check failed after {check.max_retries} retries. Logs:\n" + "\n".join(i for _, i in logs)) from e
 
-    async def acheck_health(
-        self, timeout: int = 3, retry: int = 0, services: Optional[List[str]] = None
-    ) -> None:
+    async def acheck_health(self, timeout: int = 3, retry: int = 0, services: Optional[List[str]] = None) -> None:
         """Check the health of the deployment.
 
         This method will make a request to all the health checks and check the response status
@@ -380,17 +405,9 @@ class Deployment(KoiledModel):
         """
 
         if services is None:
-            services = [
-                check.service for check in self.health_checks
-            ]  # we check all services
+            services = [check.service for check in self.health_checks]  # we check all services
 
-        await asyncio.gather(
-            *[
-                self.arun_check(check)
-                for check in self.health_checks
-                if check.service in services
-            ]
-        )
+        await asyncio.gather(*[self.arun_check(check) for check in self.health_checks if check.service in services])
 
     def check_health(
         self,
