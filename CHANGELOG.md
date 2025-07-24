@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.3.0 (2025-07-24)
+
+### Features
+
+- Provide more verbose settings
+  ([`3239888`](https://github.com/jhnnsrs/dokker/commit/32398889103650fb92193d532e541a4e3e4d04fe))
+
+
 ## v2.2.0 (2025-07-20)
 
 ### Features
