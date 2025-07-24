@@ -161,7 +161,7 @@ def testing(
 
     deployment.pull_on_enter = True
     deployment.initialize_on_enter = True
-    deployment.up_on_enter = False
+    deployment.up_on_enter = True
     deployment.down_on_exit = True
     deployment.stop_on_exit = True
     deployment.tear_down_on_exit = True

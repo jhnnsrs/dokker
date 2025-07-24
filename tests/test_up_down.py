@@ -11,6 +11,8 @@ def test_up_down():
         ],
     ) as l:
         # do something with redis
+        l.down()
+        
         
         l.up()
         
@@ -31,6 +33,7 @@ async def test_up_down_async():
         ],
     ) as l:
         # do something with redis
+        await l.adown()
         
         await l.aup()
         
