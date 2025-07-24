@@ -52,7 +52,12 @@ def local(
 
     A local deployment is a deployment that runs a docker-compose file
     locally. This is useful for testing a deployment that we do not want to
-    control (e.g. calling down) on exit.
+    control (e.g. calling down) on exit. It will stop the deployment
+    on exit, but not tear it down nor call down
+
+
+
+
     """
     if not isinstance(docker_compose_file, list):
         docker_compose_file = [docker_compose_file]
@@ -73,7 +78,7 @@ def local(
     deployment.stop_on_exit = True
     deployment.initialize_on_enter = True
     deployment.inspect_on_enter = True
-    deployment.up_on_enter = True
+    deployment.up_on_enter = False
     deployment.down_on_exit = False
     return deployment
 
