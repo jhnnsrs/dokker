@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 from typing_extensions import Annotated
 
+from dokker.errors import LabelNotFoundError, PortNotFoundError, ServiceNotFoundError
+
 
 class ServicePlacement(BaseModel):
     """Service placement constraints."""
@@ -109,25 +111,32 @@ class ComposeConfigService(BaseModel):
             The label of the service.
         """
         if not self.labels:
-            raise ValueError("No labels found in the service. Please check the service configuration.")
+            raise LabelNotFoundError("No labels found in the service. Please check the service configuration.")
 
         rlabel = self.labels.get(label)
         if not rlabel:
-            raise ValueError(f"Label {label} not found in the service.")
+            raise LabelNotFoundError(f"Label {label} not found in the service. Available labels: {sorted(self.labels)}")
 
         return rlabel
 
     def get_port_for_internal(self, port: int) -> "ComposeServicePort":
-        """Get the port for the internal port."""
+        """Get the published port mapping for an internal (target) port.
 
+        Raises
+        ------
+        PortNotFoundError
+            If the service exposes no ports, or none of them map the given
+            internal port.
+        """
         if not self.ports:
-            raise ValueError("No ports found in the service. Please check the service configuration.")
+            raise PortNotFoundError("No ports found in the service. Please check the service configuration.")
 
         for i in self.ports:
             if i.target == port:
                 return i
 
-        raise Exception(f"No published port found for Port: {port}")
+        available = sorted(p.target for p in self.ports if p.target is not None)
+        raise PortNotFoundError(f"No published port found for internal port {port}. Mapped internal ports: {available}")
 
 
 class ComposeConfigNetwork(BaseModel):
@@ -177,11 +186,11 @@ class ComposeSpec(BaseModel):
             The service.
         """
         if not self.services:
-            raise Exception("No services found in the compose spec.")
+            raise ServiceNotFoundError("No services found in the compose spec.")
         if name:
             service = self.services.get(name)
             if not service:
-                raise Exception(f"No service found with name {name}.")
+                raise ServiceNotFoundError(f"No service found with name {name}. Available services: {sorted(self.services)}")
             return service
 
         return self.services[list(self.services.keys())[0]]

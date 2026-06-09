@@ -1,0 +1,19 @@
+# A minimal stack used to exercise the ``local()`` lifecycle (sync + async
+# context managers, down -> up re-cycling, concurrent ``run``). It deliberately
+# uses its own project name and a distinct host port so it can run alongside the
+# session-scoped ``basic_project`` stack without colliding on ``dokker-basic-test``
+# or host port 5678.
+name: dokker-lifecycle-test
+
+services:
+  echo:
+    # Tiny HTTP server used as the health-check target.
+    image: hashicorp/http-echo:latest
+    command: ["-text", "hello from dokker"]
+    ports:
+      - "5679:5678"
+  worker:
+    # Shell-capable image used as the target for ``run`` commands. It idles so
+    # it stays up for the duration of the session.
+    image: alpine:3.20
+    command: ["sleep", "infinity"]

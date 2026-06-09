@@ -70,7 +70,7 @@ class CLI(KoiledModel):
             if os.path.exists(vo):
                 x.append(vo)
             else:
-                raise ValueError(f"Compose File {v} does not exist.")
+                raise ValueError(f"Compose file {vo} does not exist.")
 
         return x
 

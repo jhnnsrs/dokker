@@ -6,7 +6,7 @@ authors = [{ name = "jhnnsrs", email = "jhnnsrs@gmail.com" }]
 requires-python = ">=3.11"
 readme = "README.md"
 dependencies = [
-    "koil>=2.0.4",
+    "koil>=3.1.1",
     "aiohttp>=3.9.1,<4",
     "certifi>=2023.11.17",
     "pydantic>2",
@@ -17,7 +17,7 @@ dependencies = [
 dev-dependencies =  [
     "pytest>=8",
     "pytest-asyncio>=0.26",
-    "mypy>=1.8.0,<2",
+    "ruff>=0.10",
     "cookiecutter>=2.5.0,<3",
     "python-semantic-release>=9.21.1",
     "pytest-cov>=6.2.1",
@@ -38,14 +38,7 @@ include = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.mypy]
-exclude = ["venv/", "tests/", "examples/"]
-ignore_missing_imports = true
-
 [tool.ruff]
-extend-select = ["ANN", "D1"]
-extend-ignore = ["ANN101", "ANN002", "ANN003", "D100", "ANN401"]
-
 # Exclude a variety of commonly ignored directories.
 exclude = [
     ".bzr",
@@ -53,7 +46,6 @@ exclude = [
     ".eggs",
     ".git",
     ".hg",
-    ".mypy_cache",
     ".nox",
     ".pants.d",
     ".pytype",
@@ -74,6 +66,10 @@ exclude = [
 
 # Same as Black.
 line-length = 300
+
+[tool.ruff.lint]
+extend-select = ["ANN", "D1"]
+extend-ignore = ["ANN002", "ANN003", "D100", "ANN401"]
 
 [[tool.pydoc-markdown.loaders]]
 type = "python"

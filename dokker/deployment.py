@@ -19,8 +19,12 @@ import certifi
 from ssl import SSLContext
 import ssl
 from typing import Callable
-from dokker.errors import NotInitializedError, NotInspectedError, HealthCheckError
+from dokker.errors import NotInitializedError, NotInspectedError, HealthCheckError, TearDownError
+from dokker.command import CommandError
+import logging
 
+
+logger = logging.getLogger(__name__)
 
 ValidPath = Union[str, Path]
 
@@ -150,6 +154,28 @@ class Deployment(KoiledModel):
         default=False,
         description="Should we tear down the deployment when exiting the context manager.",
     )
+    remove_orphans_on_down: bool = Field(
+        default=False,
+        description="Should we remove orphans when downing the deployment.",
+    )
+    remove_volumes_on_down: bool = Field(
+        default=False,
+        description="Should we remove volumes when downing the deployment.",
+    )
+    shutdown_timeout: Optional[int] = Field(
+        default=None,
+        description=("Grace period in seconds passed to `docker compose stop`/`down` as `-t`. A container that ignores SIGTERM is SIGKILLed after this many seconds, which bounds how long stopping a single container can block teardown. None (the default) uses docker's own default (10s)."),
+    )
+    teardown_timeout: Optional[float] = Field(
+        default=None,
+        description=(
+            "Overall wall-clock timeout in seconds for the on-exit teardown (stop/down/tear "
+            "down). If docker compose has not finished within this window, dokker stops "
+            "waiting and raises a TearDownError. Note that the docker daemon keeps running "
+            "the operation in the background; prefer `shutdown_timeout` to make individual "
+            "containers stop faster. None (the default) disables this guard."
+        ),
+    )
     threadpool_workers: int = Field(
         default=10,
         description="The number of workers to use for the threadpool. This is used for the health checks and the log watcher.",
@@ -226,10 +252,18 @@ class Deployment(KoiledModel):
 
         return self._cli
 
-    async def arun(self, service: str, command: List[str] | str) -> LogRoll:
+    async def arun(
+        self,
+        service: str,
+        command: List[str] | str,
+        raise_on_error: bool = True,
+        expected_exit_code: int = 0,
+    ) -> LogRoll:
         """Run a command in a service.
 
         Will run the given command in the given service and return the logs.
+        The exit code of the command is available on the returned
+        ``LogRoll.returncode``.
 
         Parameters
         ----------
@@ -237,24 +271,72 @@ class Deployment(KoiledModel):
             The name of the service to run the command in.
         command : List[str]
             The command to run as a list of strings.
+        raise_on_error : bool, optional
+            If True (the default), a ``CommandError`` is raised when the command
+            exits with a code different from ``expected_exit_code``. If False,
+            the logs are returned regardless and the exit code can be inspected
+            on ``LogRoll.returncode``.
+        expected_exit_code : int, optional
+            The exit code that is considered a success, by default 0. Useful for
+            commands that are expected to fail (e.g. asserting a non-zero exit).
 
         Returns
         -------
         LogRoll
-            The logs of the command.
+            The logs of the command, with ``returncode`` set to the exit code.
+
+        Raises
+        ------
+        CommandError
+            If ``raise_on_error`` is True and the command exits with a code
+            different from ``expected_exit_code``.
         """
         cli = await self.aretrieve_cli()
         logs = LogRoll()
-        async for log in cli.astream_run(service=service, command=command):
-            logs.append(log)
-            self.logger.on_logs(log)
+        error: Optional[CommandError] = None
+        try:
+            async for log in cli.astream_run(service=service, command=command):
+                logs.append(log)
+                self.logger.on_logs(log)
+        except CommandError as e:
+            # A failure that is not about the exit code (e.g. the subprocess
+            # could not be spawned) carries no return code and must always raise.
+            if e.returncode is None:
+                raise
+            error = e
+
+        returncode = error.returncode if error is not None else 0
+        logs.returncode = returncode
+
+        if returncode != expected_exit_code and raise_on_error:
+            if error is not None:
+                # Re-raise the rich error from the command layer, but make clear
+                # that a specific exit code was expected when that is the case.
+                if expected_exit_code != 0:
+                    error.args = (f"{error.args[0]}\n\nExpected exit code {expected_exit_code}, got {returncode}.",)
+                raise error
+            raise CommandError(
+                f"Command in service `{service}` exited with code {returncode}, expected {expected_exit_code}.\n\n" + ("STDOUT:\n" + logs.stdout if logs.stdout else "No output was captured."),
+                command=command if isinstance(command, str) else " ".join(command),
+                returncode=returncode,
+                stdout=logs.stdout_list,
+                stderr=logs.stderr_list,
+            )
+
         return logs
 
-    def run(self, service: str, command: List[str] | str) -> LogRoll:
+    def run(
+        self,
+        service: str,
+        command: List[str] | str,
+        raise_on_error: bool = True,
+        expected_exit_code: int = 0,
+    ) -> LogRoll:
         """Run a command in a service. (sync)
 
         Will run the given command in the given service and return the logs.
-        This method is called automatically when using the deployment as a context manager.
+        The exit code of the command is available on the returned
+        ``LogRoll.returncode``.
 
         Parameters
         ----------
@@ -262,13 +344,33 @@ class Deployment(KoiledModel):
             The name of the service to run the command in.
         command : List[str]
             The command to run as a list of strings.
+        raise_on_error : bool, optional
+            If True (the default), a ``CommandError`` is raised when the command
+            exits with a code different from ``expected_exit_code``. If False,
+            the logs are returned regardless and the exit code can be inspected
+            on ``LogRoll.returncode``.
+        expected_exit_code : int, optional
+            The exit code that is considered a success, by default 0. Useful for
+            commands that are expected to fail (e.g. asserting a non-zero exit).
 
         Returns
         -------
         LogRoll
-            The logs of the command.
+            The logs of the command, with ``returncode`` set to the exit code.
+
+        Raises
+        ------
+        CommandError
+            If ``raise_on_error`` is True and the command exits with a code
+            different from ``expected_exit_code``.
         """
-        return unkoil(self.arun, service=service, command=command)
+        return unkoil(
+            self.arun,
+            service=service,
+            command=command,
+            raise_on_error=raise_on_error,
+            expected_exit_code=expected_exit_code,
+        )
 
     async def ainspect(self) -> ComposeSpec:
         """Inspect the deployment.
@@ -659,12 +761,27 @@ class Deployment(KoiledModel):
         """
         return unkoil(self.apull)
 
-    async def adown(self) -> LogRoll:
+    async def adown(
+        self,
+        timeout: Optional[int] = None,
+        volumes: Optional[bool] = None,
+        remove_orphans: Optional[bool] = None,
+    ) -> LogRoll:
         """Down the deployment.
 
         Will call docker-compose down on the deployment.
         This method is called automatically when using the deployment as a context manager and
         if down_on_exit is True.
+
+        Parameters
+        ----------
+        timeout : Optional[int], optional
+            Grace period in seconds (docker's `-t`) before unresponsive containers are
+            SIGKILLed. Defaults to the deployment's ``shutdown_timeout`` when not given.
+        volumes : Optional[bool], optional
+            Should we remove volumes. Defaults to ``remove_volumes_on_down``.
+        remove_orphans : Optional[bool], optional
+            Should we remove orphans. Defaults to ``remove_orphans_on_down``.
 
         Returns
         -------
@@ -672,10 +789,17 @@ class Deployment(KoiledModel):
             The logs of the down command.
         """
         cli = await self.aretrieve_cli()
+        if timeout is None:
+            timeout = self.shutdown_timeout
+        if volumes is None:
+            volumes = self.remove_volumes_on_down
+        if remove_orphans is None:
+            remove_orphans = self.remove_orphans_on_down
 
         logs = LogRoll()
-        async for log in cli.astream_down():
+        async for log in cli.astream_down(timeout=timeout, volumes=volumes, remove_orphans=remove_orphans):
             logs.append(log)
+            self.logger.on_down(log)
 
         return logs
 
@@ -705,26 +829,47 @@ class Deployment(KoiledModel):
         """
         return unkoil(self.aremove)
 
-    def down(self) -> LogRoll:
+    def down(
+        self,
+        timeout: Optional[int] = None,
+        volumes: Optional[bool] = None,
+        remove_orphans: Optional[bool] = None,
+    ) -> LogRoll:
         """Down the deployment.
 
         Will call docker-compose down on the deployment.
         This method is called automatically when using the deployment as a context manager and
         if down_on_exit is True.
 
+        Parameters
+        ----------
+        timeout : Optional[int], optional
+            Grace period in seconds (docker's `-t`) before unresponsive containers are
+            SIGKILLed. Defaults to the deployment's ``shutdown_timeout`` when not given.
+        volumes : Optional[bool], optional
+            Should we remove volumes. Defaults to ``remove_volumes_on_down``.
+        remove_orphans : Optional[bool], optional
+            Should we remove orphans. Defaults to ``remove_orphans_on_down``.
+
         Returns
         -------
         List[str]
             The logs of the down command.
         """
-        return unkoil(self.adown)
+        return unkoil(self.adown, timeout=timeout, volumes=volumes, remove_orphans=remove_orphans)
 
-    async def astop(self) -> LogRoll:
+    async def astop(self, timeout: Optional[int] = None) -> LogRoll:
         """Stop the deployment.
 
         Will call docker-compose stop on the deployment.
         This method is called automatically when using the deployment as a context manager and
         if stop_on_exit is True.
+
+        Parameters
+        ----------
+        timeout : Optional[int], optional
+            Grace period in seconds (docker's `-t`) before unresponsive containers are
+            SIGKILLed. Defaults to the deployment's ``shutdown_timeout`` when not given.
 
         Returns
         -------
@@ -732,26 +877,35 @@ class Deployment(KoiledModel):
             The logs of the stop command.
         """
         cli = await self.aretrieve_cli()
+        if timeout is None:
+            timeout = self.shutdown_timeout
 
         logs = LogRoll()
-        async for log in cli.astream_stop():
+        async for log in cli.astream_stop(timeout=timeout):
             logs.append(log)
+            self.logger.on_stop(log)
 
         return logs
 
-    def stop(self) -> LogRoll:
+    def stop(self, timeout: Optional[int] = None) -> LogRoll:
         """Stop the deployment.
 
         Will call docker-compose stop on the deployment.
         This method is called automatically when using the deployment as a context manager and
         if stop_on_exit is True.
 
+        Parameters
+        ----------
+        timeout : Optional[int], optional
+            Grace period in seconds (docker's `-t`) before unresponsive containers are
+            SIGKILLed. Defaults to the deployment's ``shutdown_timeout`` when not given.
+
         Returns
         -------
         List[str]
             The logs of the stop command.
         """
-        return unkoil(self.astop)
+        return unkoil(self.astop, timeout=timeout)
 
     async def aget_cli(self) -> CLI:
         """Get the CLI object of the deployment.
@@ -792,20 +946,16 @@ class Deployment(KoiledModel):
 
         return self
 
-    async def __aexit__(
-        self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        traceback: Optional[TracebackType],
-    ) -> None:
-        """Async exit method for the deployment.
+    async def _arun_teardown(self) -> None:
+        """Run the configured on-exit teardown steps.
 
-        Will call docker-compose down and stop on the deployment, if
-        down_on_exit and stop_on_exit are True respectively.
+        This stops, downs and tears down the deployment according to the
+        ``*_on_exit`` flags. It is factored out of ``__aexit__`` so it can be
+        wrapped in an overall ``teardown_timeout`` guard.
         """
-        if self.stop_on_exit:
+        if self.stop_on_exit or self.down_on_exit:
             await self.project.abefore_stop()
-            await self.astop()
+            await self.astop(self.shutdown_timeout)
 
         if self.down_on_exit:
             await self.project.abefore_down()
@@ -815,4 +965,40 @@ class Deployment(KoiledModel):
             if self._cli:
                 await self.project.atear_down(self._cli)
 
-        self._cli = None
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
+        """Async exit method for the deployment.
+
+        Will stop, down and tear down the deployment according to the
+        ``stop_on_exit``/``down_on_exit``/``tear_down_on_exit`` flags.
+
+        Teardown is bounded: every ``stop``/``down`` carries the
+        ``shutdown_timeout`` grace period, and the whole sequence is wrapped in
+        an optional ``teardown_timeout`` wall-clock guard so an unresponsive
+        container cannot block the context exit forever. A teardown failure is
+        raised as a ``TearDownError``/``CommandError`` when the block is exiting
+        cleanly, but only logged (never raised) when another exception is
+        already propagating, so it cannot mask the original error.
+        """
+        try:
+            if self.teardown_timeout is not None:
+                await asyncio.wait_for(self._arun_teardown(), timeout=self.teardown_timeout)
+            else:
+                await self._arun_teardown()
+        except asyncio.TimeoutError as e:
+            message = f"Tearing the deployment down timed out after {self.teardown_timeout}s. docker compose did not finish in time and the docker daemon may still be completing the operation in the background. Consider lowering `shutdown_timeout` so unresponsive containers are killed sooner."
+            if exc_type is not None:
+                logger.warning("%s (while another error was propagating, not raising)", message)
+            else:
+                raise TearDownError(message) from e
+        except CommandError as e:
+            if exc_type is not None:
+                logger.warning("Deployment teardown failed (while another error was propagating, not raising): %s", e)
+            else:
+                raise
+        finally:
+            self._cli = None

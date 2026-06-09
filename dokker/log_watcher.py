@@ -1,3 +1,4 @@
+import inspect
 from types import TracebackType
 from koil.composition import KoiledModel
 import asyncio
@@ -21,7 +22,15 @@ def format_log_watcher_message(watcher: "LogWatcher", exc_val: Optional[BaseExce
 
 
 class LogRoll(list[tuple[str, str]]):
-    """A class to roll logs from the log watcher."""
+    """A class to roll logs from the log watcher.
+
+    Besides the collected ``(source, text)`` log lines, a ``LogRoll`` returned
+    by ``Deployment.run`` / ``arun`` carries the ``returncode`` of the command
+    that produced it, so callers can inspect the exit code even when they chose
+    not to raise on a non-zero result.
+    """
+
+    returncode: Optional[int] = None
 
     @property
     def stdout_gen(self) -> Generator[str, None, None]:
@@ -34,7 +43,7 @@ class LogRoll(list[tuple[str, str]]):
     def stderr_gen(self) -> Generator[str, None, None]:
         """Generator for stderr logs."""
         for log, x in self:
-            if log == "STDOUT":
+            if log == "STDERR":
                 yield x
 
     @property
@@ -56,6 +65,10 @@ class LogRoll(list[tuple[str, str]]):
     def stderr(self) -> str:
         """String of stderr logs joined by new lines."""
         return "\n".join(self.stderr_gen)
+
+    def __str__(self) -> str:
+        """String representation of the log roll."""
+        return "\n".join(f"{log}: {text}" for log, text in self)
 
 
 class LogWatcher(KoiledModel):
@@ -85,7 +98,7 @@ class LogWatcher(KoiledModel):
     async def aon_logs(self, log: Tuple[str, str]) -> None:
         """Asynchronous function to handle logs."""
         if self.log_function:
-            if asyncio.iscoroutinefunction(self.log_function):
+            if inspect.iscoroutinefunction(self.log_function):
                 await self.log_function(log)
             else:
                 self.log_function(log)
@@ -120,27 +133,35 @@ class LogWatcher(KoiledModel):
 
         return self
 
-    async def __aexit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], traceback: Optional[TracebackType]) -> None:
-        """Asynchronous context manager to exit the log watcher."""
-        if exc_type is not None and self.append_to_traceback:
-            new_message = format_log_watcher_message(self, exc_val, rich=self.rich_traceback)
-            try:
-                new_exc = exc_type(new_message)
-            except:  # noqa: E722
-                new_exc = Exception(new_message)
+    async def __aexit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
+        """Asynchronous context manager to exit the log watcher.
 
-            raise new_exc.with_traceback(traceback) from exc_val
+        The watch task (and its ``docker compose logs --follow`` subprocess) is
+        always cancelled on the way out, even when an exception is propagating
+        through the ``with`` block -- a Ctrl-C, a failed assertion, a request
+        error. Doing the teardown in a ``finally`` is what stops those cases
+        from leaking a ghost streaming task and an orphaned follow process.
+        """
+        try:
+            if exc_type is not None and self.append_to_traceback:
+                new_message = format_log_watcher_message(self, exc_val, rich=self.rich_traceback)
+                try:
+                    new_exc = exc_type(new_message)
+                except:  # noqa: E722
+                    new_exc = Exception(new_message)
 
-        if self.wait_for_logs:
-            if self._just_one_log is not None:
-                await asyncio.wait_for(self._just_one_log, self.wait_for_logs_timeout)
+                raise new_exc.with_traceback(exc_tb) from exc_val
 
-        if self._watch_task is not None:
-            self._watch_task.cancel()
+            if self.wait_for_logs:
+                if self._just_one_log is not None:
+                    await asyncio.wait_for(self._just_one_log, self.wait_for_logs_timeout)
+        finally:
+            if self._watch_task is not None:
+                self._watch_task.cancel()
 
-            try:
-                await self._watch_task
-            except asyncio.CancelledError:
-                pass
+                try:
+                    await self._watch_task
+                except asyncio.CancelledError:
+                    pass
 
-        self._watch_task = None
+            self._watch_task = None

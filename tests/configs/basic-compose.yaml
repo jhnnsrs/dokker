@@ -1,0 +1,23 @@
+# A lightweight, self-contained stack of standard images used to integration
+# test dokker end to end without depending on any private/heavy images.
+name: dokker-basic-test
+
+services:
+  echo:
+    # Tiny (~9MB) HTTP server that responds 200 with a fixed body on :5678.
+    # Used to exercise health checks, port inspection and the log watcher.
+    image: hashicorp/http-echo:latest
+    command: ["-text", "hello from dokker"]
+    ports:
+      - "5678:5678"
+  redis:
+    # A second, non-HTTP service so multi-service inspection has something to
+    # look at and ``up``/``down`` touches more than one container. Its port is
+    # left unpublished so the test stack never collides with a redis already
+    # listening on the host's 6379.
+    image: redis:7-alpine
+  worker:
+    # A shell-capable image used as a target for ``run`` commands. It idles so
+    # it stays up for the duration of the session.
+    image: alpine:3.20
+    command: ["sleep", "infinity"]

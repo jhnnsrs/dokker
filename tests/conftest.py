@@ -1,14 +1,21 @@
 from typing import Generator
 from dokker import testing, HealthCheck, Deployment
 import pytest
-
+        
+    
 @pytest.fixture(scope="session")
-def composed_project() -> Generator[Deployment, None, None]:
-    with testing(
-        "tests/configs/docker-compose.yaml",
-        health_checks=[
-            HealthCheck(url="http://localhost:6888/graphql", service="mikro")
-        ],
-    ) as l:
+def basic_project() -> Generator[Deployment, None, None]:
+    """A pulled, started, and (on teardown) torn-down lightweight stack."""
+    COMPOSE_FILE = "tests/configs/basic-compose.yaml"
+    
 
-        yield l
+    with testing(
+        COMPOSE_FILE,
+        health_checks=[
+            HealthCheck(url="http://localhost:5678", service="echo"),
+        ],
+        # The worker/redis containers ignore SIGTERM, so a short grace period
+        # keeps teardown from blocking the full default 10s per container.
+        shutdown_timeout=1,
+    ) as deployment:
+        yield deployment

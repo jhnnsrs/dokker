@@ -47,6 +47,7 @@ def mirror(local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = N
 def local(
     docker_compose_file: Union[ValidPath, List[ValidPath]],
     health_checks: Optional[List[HealthCheck]] = None,
+    shutdown_timeout: Optional[int] = 4,
 ) -> Deployment:
     """Creates a local deployment.
 
@@ -71,6 +72,7 @@ def local(
     deployment = Deployment(
         project=project,
         health_checks=health_checks,
+        shutdown_timeout=shutdown_timeout,
     )
 
     deployment.pull_on_enter = False
@@ -129,6 +131,8 @@ def monitoring(
 def testing(
     docker_compose_file: Union[ValidPath, List[ValidPath]],
     health_checks: Optional[List[HealthCheck]] = None,
+    shutdown_timeout: Optional[int] = 4,
+    teardown_timeout: Optional[float] = 10.0,
 ) -> Deployment:
     """Generates a testing deployment.
 
@@ -141,6 +145,15 @@ def testing(
         The docker-compose file to run.
     health_checks : Optional[List[HealthCheck]], optional
         The health checks to run, by default None
+    shutdown_timeout : Optional[int], optional
+        Grace period in seconds (docker's `-t`) passed to ``stop``/``down`` on
+        teardown. Lower it (e.g. ``1``) when your services ignore SIGTERM so the
+        teardown does not wait the full default grace period. None uses docker's
+        default (10s).
+    teardown_timeout : Optional[float], optional
+        Overall wall-clock guard in seconds for the on-exit teardown, 60s by
+        default, so a stuck ``docker compose down`` cannot block the test session
+        forever. Pass None to disable.
 
     Returns
     -------
@@ -157,13 +170,19 @@ def testing(
     deployment = Deployment(
         project=project,
         health_checks=health_checks,
+        shutdown_timeout=shutdown_timeout,
+        teardown_timeout=teardown_timeout,
     )
 
     deployment.pull_on_enter = True
     deployment.initialize_on_enter = True
+    deployment.inspect_on_enter = True
+    deployment.health_on_enter = True
     deployment.up_on_enter = True
     deployment.down_on_exit = True
     deployment.stop_on_exit = True
     deployment.tear_down_on_exit = True
+    deployment.remove_orphans_on_down = True
+    deployment.remove_volumes_on_down = True
 
     return deployment

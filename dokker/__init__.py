@@ -14,6 +14,20 @@ from .builders import (
 )
 from .project import Project
 from .projects.local import LocalProject
+from .log_watcher import LogRoll, LogWatcher
+from .command import CommandError
+from .cli import CLI, CLIError
+from .errors import (
+    DokkerError,
+    HealthCheckError,
+    LabelNotFoundError,
+    NotInitializedError,
+    NotInspectableError,
+    NotInspectedError,
+    PortNotFoundError,
+    ServiceNotFoundError,
+    TearDownError,
+)
 
 __all__ = [
     "Deployment",
@@ -25,4 +39,18 @@ __all__ = [
     "local",
     "Project",
     "LocalProject",
+    "LogRoll",
+    "LogWatcher",
+    "CLI",
+    "CLIError",
+    "CommandError",
+    "DokkerError",
+    "HealthCheckError",
+    "LabelNotFoundError",
+    "NotInitializedError",
+    "NotInspectableError",
+    "NotInspectedError",
+    "PortNotFoundError",
+    "ServiceNotFoundError",
+    "TearDownError",
 ]
