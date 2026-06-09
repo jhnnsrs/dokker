@@ -1,9 +1,25 @@
 # CHANGELOG
 
 
+## v2.4.0 (2026-06-09)
+
+### Bug Fixes
+
+- Add coverage
+  ([`18efa2a`](https://github.com/jhnnsrs/dokker/commit/18efa2a70a493b5f41377b592f545a8e9402d756))
+
+### Features
+
+- Fix major async sync bugs fixed with koil
+  ([`07fbff6`](https://github.com/jhnnsrs/dokker/commit/07fbff6913d7da8d8527d33b0914e17f142bcede))
+
+
 ## v2.3.0 (2025-07-24)
 
 ### Features
+
+- Change again some settings
+  ([`4d19fa1`](https://github.com/jhnnsrs/dokker/commit/4d19fa1ea2419acd46e609b27897e12e65f1e497))
 
 - Provide more verbose settings
   ([`3239888`](https://github.com/jhnnsrs/dokker/commit/32398889103650fb92193d532e541a4e3e4d04fe))
