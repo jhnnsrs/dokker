@@ -52,6 +52,7 @@ class DokkerProject(BaseModel):
 
         return CLI(
             compose_files=[compose_file],
+            compose_project_name=self.name,
         )
 
     async def atear_down(self, cli: CLI) -> None:

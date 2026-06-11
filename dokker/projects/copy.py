@@ -46,7 +46,10 @@ class CopyPathProject(BaseModel):
                 "No docker-compose.yml found in the template. It appears that the template is not a valid dokker template."
             )
 
-        return CLI(compose_files=[compose_file])
+        return CLI(
+            compose_files=[compose_file],
+            compose_project_name=self.project_name,
+        )
 
     async def atear_down(self, cli: CLI) -> None:
         """Tear down the project.

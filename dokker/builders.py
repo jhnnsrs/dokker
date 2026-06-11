@@ -1,3 +1,4 @@
+import uuid
 from .deployment import Deployment, HealthCheck
 from typing import List, Optional, TYPE_CHECKING, Union
 from dokker.projects.copy import CopyPathProject
@@ -8,7 +9,11 @@ if TYPE_CHECKING:
     pass
 
 
-def mirror(local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = None) -> Deployment:
+def mirror(
+    local_path: ValidPath,
+    health_checks: Optional[List[HealthCheck]] = None,
+    project_name: Optional[str] = None,
+) -> Deployment:
     """Creates a Mirro Deployment
 
     A mirror deployment is a deployment that copies a local path to a temporary
@@ -22,6 +27,10 @@ def mirror(local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = N
         The path to the project (will be copyied and on tear down deleted)
     health_checks : Optional[List[HealthCheck]], optional
         A list of health checks, by default None
+    project_name : Optional[str], optional
+        Optional Compose project name (``-p``); set a unique value to isolate this
+        deployment from sibling stacks sharing the same compose directory. Defaults
+        to the basename of the copied path.
 
     Returns
     -------
@@ -31,7 +40,7 @@ def mirror(local_path: ValidPath, health_checks: Optional[List[HealthCheck]] = N
     if health_checks is None:
         health_checks = []
 
-    project = CopyPathProject(project_path=local_path)
+    project = CopyPathProject(project_path=local_path, project_name=project_name)
     deployment = Deployment(
         project=project,
         health_checks=health_checks,
@@ -48,6 +57,7 @@ def local(
     docker_compose_file: Union[ValidPath, List[ValidPath]],
     health_checks: Optional[List[HealthCheck]] = None,
     shutdown_timeout: Optional[int] = 4,
+    project_name: Optional[str] = None,
 ) -> Deployment:
     """Creates a local deployment.
 
@@ -56,9 +66,12 @@ def local(
     control (e.g. calling down) on exit. It will stop the deployment
     on exit, but not tear it down nor call down
 
-
-
-
+    Parameters
+    ----------
+    project_name : Optional[str], optional
+        Optional Compose project name (``-p``); set a unique value to isolate this
+        deployment from sibling stacks sharing the same compose directory. By default
+        Compose derives it from the compose file's directory basename.
     """
     if not isinstance(docker_compose_file, list):
         docker_compose_file = [docker_compose_file]
@@ -68,6 +81,7 @@ def local(
 
     project = LocalProject(
         compose_files=docker_compose_file,
+        project_name=project_name,
     )
     deployment = Deployment(
         project=project,
@@ -88,6 +102,7 @@ def local(
 def monitoring(
     docker_compose_file: Union[ValidPath, List[ValidPath]],
     health_checks: Optional[List[HealthCheck]] = None,
+    project_name: Optional[str] = None,
 ) -> Deployment:
     """Generates a monitoring deployment.
 
@@ -101,6 +116,10 @@ def monitoring(
         The docker-compose file to run.
     health_checks : Optional[List[HealthCheck]], optional
         The health checks to run, by default None
+    project_name : Optional[str], optional
+        Optional Compose project name (``-p``); set a unique value to isolate this
+        deployment from sibling stacks sharing the same compose directory. By default
+        Compose derives it from the compose file's directory basename.
 
     Returns
     -------
@@ -113,6 +132,7 @@ def monitoring(
         health_checks = []
     project = LocalProject(
         compose_files=docker_compose_file,
+        project_name=project_name,
     )
     deployment = Deployment(
         project=project,
@@ -133,6 +153,9 @@ def testing(
     health_checks: Optional[List[HealthCheck]] = None,
     shutdown_timeout: Optional[int] = 4,
     teardown_timeout: Optional[float] = 10.0,
+    project_name: Optional[str] = None,
+    remove_orphans: bool = True,
+    remove_volumes: bool = True,
 ) -> Deployment:
     """Generates a testing deployment.
 
@@ -154,6 +177,15 @@ def testing(
         Overall wall-clock guard in seconds for the on-exit teardown, 60s by
         default, so a stuck ``docker compose down`` cannot block the test session
         forever. Pass None to disable.
+    project_name : Optional[str], optional
+        Compose project name (``-p``). Defaults to a unique random name so the
+        deployment never collides with sibling stacks that share the same compose
+        directory basename (which is Compose's default project name). Pass an
+        explicit value to pin it.
+    remove_orphans : bool, optional
+        Remove orphan containers on ``down`` at teardown, by default True.
+    remove_volumes : bool, optional
+        Remove named volumes on ``down`` at teardown, by default True.
 
     Returns
     -------
@@ -164,8 +196,11 @@ def testing(
         docker_compose_file = [docker_compose_file]
     if health_checks is None:
         health_checks = []
+    if project_name is None:
+        project_name = f"dokker-test-{uuid.uuid4().hex[:8]}"
     project = LocalProject(
         compose_files=docker_compose_file,
+        project_name=project_name,
     )
     deployment = Deployment(
         project=project,
@@ -182,7 +217,7 @@ def testing(
     deployment.down_on_exit = True
     deployment.stop_on_exit = True
     deployment.tear_down_on_exit = True
-    deployment.remove_orphans_on_down = True
-    deployment.remove_volumes_on_down = True
+    deployment.remove_orphans_on_down = remove_orphans
+    deployment.remove_volumes_on_down = remove_volumes
 
     return deployment

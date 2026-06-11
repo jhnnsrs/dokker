@@ -85,6 +85,9 @@ class CLI(KoiledModel):
             for compose_file in self.compose_files:
                 result += ["--file", str(compose_file)]
 
+        if self.compose_project_name is not None:
+            result += ["--project-name", str(self.compose_project_name)]
+
         if self.config is not None:
             result += ["--config", str(self.config)]
 

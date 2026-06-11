@@ -28,6 +28,22 @@ def test_docker_cmd_includes_optional_flags():
     assert "--log-level" in cmd and "DEBUG" in cmd
 
 
+def test_docker_cmd_includes_project_name():
+    # An explicit project name must be emitted as ``--project-name`` so that
+    # up/down/ps/logs all target the same, isolated Compose project. The CLI
+    # flag wins over any ``name:`` declared inside the compose file.
+    cli = CLI(compose_files=[COMPOSE_FILE], compose_project_name="my-proj")
+    cmd = cli.docker_cmd
+    assert "--project-name" in cmd
+    assert cmd[cmd.index("--project-name") + 1] == "my-proj"
+
+
+def test_docker_cmd_omits_project_name_when_unset():
+    # Default behavior is preserved: no name => no flag, Compose derives it.
+    cli = CLI(compose_files=[COMPOSE_FILE])
+    assert "--project-name" not in cli.docker_cmd
+
+
 def test_missing_compose_file_raises_with_path():
     with pytest.raises(ValueError) as excinfo:
         CLI(compose_files=["nope/does-not-exist.yaml"])
