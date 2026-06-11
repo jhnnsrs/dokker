@@ -42,11 +42,21 @@ You rarely construct a `Deployment` by hand. Instead you pick a **builder** that
 | Builder | Use case | On enter | On exit |
 |---|---|---|---|
 | `local(...)` | Drive a stack you start/stop yourself during a session. | initialize + inspect | `stop` (no `down`) |
-| `testing(...)` | Full integration test: bring everything up, wait for health, clean up completely. | pull + up + health-check | `stop` + `down` + tear-down (removes volumes & orphans) |
+| `testing(...)` | Full integration test: bring everything up, wait for health, clean up completely. | pull + up + health-check | `stop` + `down` + tear-down (removes volumes & orphans by default) |
 | `monitoring(...)` | Observe/inspect a stack that is already running in production; never calls the compose CLI to change it. | inspect + health-check | nothing |
 | `mirror(...)` | Copy a local project into a temp dir and run it there, isolated from the source. | (copy) | nothing |
 
 All builders accept a compose file path (or list of paths) and an optional list of `HealthCheck`s.
+
+### Project isolation (`project_name`)
+
+By default Docker Compose derives the **project name** from the compose file's directory basename, so two deployments whose compose files live in same-named directories share a project — and one's `down()` tears down the other's containers. Every builder accepts an optional `project_name` to set Compose's `-p`/`--project-name` flag and keep deployments isolated:
+
+```python
+deployment = local("docker-compose.yaml", project_name="my-service")
+```
+
+`testing(...)` is the exception: it defaults `project_name` to a unique random value (`dokker-test-<id>`) so parallel/identical test stacks never collide. Pass an explicit `project_name` to pin it. `testing` also exposes `remove_orphans` and `remove_volumes` (both `True` by default) to control what `down` cleans up on teardown.
 
 ### `HealthCheck`
 
