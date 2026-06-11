@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.5.0 (2026-06-11)
+
+### Features
+
+- Fix isolating
+  ([`89b9803`](https://github.com/jhnnsrs/dokker/commit/89b980320aa4f8fc48a19504fce845bf24530534))
+
+
 ## v2.4.0 (2026-06-09)
 
 ### Bug Fixes
