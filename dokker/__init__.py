@@ -5,7 +5,14 @@ It is designed to tightly integrate in python projects and provide
 sensible defaults for common docker-compose workflows.
 """
 
-from .deployment import Deployment, HealthCheck, Logger
+from .deployment import (
+    Deployment,
+    HealthCheck,
+    Logger,
+    PolicyName,
+    TeardownPolicy,
+    TEARDOWN_POLICIES,
+)
 from .builders import (
     mirror,
     testing,
@@ -33,6 +40,9 @@ __all__ = [
     "Deployment",
     "HealthCheck",
     "Logger",
+    "PolicyName",
+    "TeardownPolicy",
+    "TEARDOWN_POLICIES",
     "mirror",
     "testing",
     "monitoring",

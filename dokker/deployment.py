@@ -1,9 +1,10 @@
 from types import TracebackType
 import aiohttp.client_exceptions
 import aiohttp.http_exceptions
-from pydantic import BaseModel, ConfigDict, Field
-from typing import Dict, Optional, List, Protocol, Self, Type, runtime_checkable
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from typing import Awaitable, Dict, Literal, Optional, List, Protocol, Self, Type, runtime_checkable
 from koil.composition import KoiledModel
+from dataclasses import dataclass
 import asyncio
 from pathlib import Path
 from dokker.compose_spec import ComposeSpec
@@ -27,6 +28,48 @@ import logging
 logger = logging.getLogger(__name__)
 
 ValidPath = Union[str, Path]
+
+
+PolicyName = Literal["testing", "local", "monitoring", "manual"]
+"""The name of a teardown policy. See ``TEARDOWN_POLICIES``."""
+
+
+@dataclass(frozen=True)
+class TeardownPolicy:
+    """What a deployment does on context-manager exit, by default.
+
+    A policy is the *global* default for ``up()``: when ``up()`` is called
+    without an explicit ``down_on_exit``/``stop_on_exit``, the deployment's
+    policy decides what teardown gets registered. Per-call arguments always
+    locally override the policy.
+
+    Attributes
+    ----------
+    exit_action:
+        ``"down"`` to remove the stack on exit, ``"stop"`` to only stop it
+        (containers and volumes kept), or ``None`` for no automatic teardown.
+    tear_down_project:
+        Whether to also tear the project down on exit (e.g. remove a
+        ``mirror`` temp-dir copy). No-op for projects that create nothing.
+    """
+
+    exit_action: Optional[Literal["down", "stop"]] = None
+    tear_down_project: bool = False
+
+
+TEARDOWN_POLICIES: Dict[str, TeardownPolicy] = {
+    # Full integration cleanup: down (which, with the deployment's default
+    # remove_*_on_down flags, also drops volumes + orphans) and tear the
+    # project down (removes a mirror temp-dir copy).
+    "testing": TeardownPolicy(exit_action="down", tear_down_project=True),
+    # A stack you drive yourself: stop on exit, keep the containers and any
+    # data volumes so you can bring it back up.
+    "local": TeardownPolicy(exit_action="stop", tear_down_project=False),
+    # Observe a stack you do not own: never change it on exit.
+    "monitoring": TeardownPolicy(exit_action=None, tear_down_project=False),
+    # Bare deployment: you are responsible for teardown.
+    "manual": TeardownPolicy(exit_action=None, tear_down_project=False),
+}
 
 
 class HealthCheck(BaseModel):
@@ -122,45 +165,23 @@ class Deployment(KoiledModel):
         default_factory=lambda: [],
         description="A list of health checks to run on the deployment. These are run when the deployment is up and running.",
     )
-    initialize_on_enter: bool = Field(
-        default=False,
-        description="Should we initialize the deployment when entering the context manager.",
-    )
-    inspect_on_enter: bool = Field(
-        default=False,
-        description="Should we inspect the deployment when entering the context manager.",
-    )
-    pull_on_enter: bool = Field(
-        default=False,
-        description="Should we pull the deployment when entering the context manager.",
-    )
-    up_on_enter: bool = Field(
-        default=False,
-        description="Should we up the deployment when entering the context manager.",
-    )
-    health_on_enter: bool = Field(
-        default=False,
-        description="Should we check the health of the deployment when entering the context manager.",
-    )
-    down_on_exit: bool = Field(
-        default=False,
-        description="Should we down the deployment when exiting the context manager.",
-    )
-    stop_on_exit: bool = Field(
-        default=False,
-        description="Should we stop the deployment when exiting the context manager.",
-    )
-    tear_down_on_exit: bool = Field(
-        default=False,
-        description="Should we tear down the deployment when exiting the context manager.",
+    policy: PolicyName = Field(
+        default="manual",
+        description=(
+            "The teardown policy: the global default for what `up()` registers on "
+            "context-manager exit when no explicit `down_on_exit`/`stop_on_exit` is "
+            "given. `testing` downs (and tears the project down), `local` stops, "
+            "`monitoring`/`manual` do nothing. Per-call `up(...)` arguments override "
+            "it locally. See `TEARDOWN_POLICIES`."
+        ),
     )
     remove_orphans_on_down: bool = Field(
-        default=False,
-        description="Should we remove orphans when downing the deployment.",
+        default=True,
+        description="Should we remove orphan containers when downing the deployment (`--remove-orphans`). Defaults to True so a `down` leaves nothing dangling; set False to keep orphans.",
     )
     remove_volumes_on_down: bool = Field(
-        default=False,
-        description="Should we remove volumes when downing the deployment.",
+        default=True,
+        description="Should we remove named/anonymous volumes when downing the deployment (`--volumes`). Defaults to True so a `down` does not leak volumes; set False to preserve data (e.g. a local dev database).",
     )
     shutdown_timeout: Optional[int] = Field(
         default=None,
@@ -203,6 +224,28 @@ class Deployment(KoiledModel):
 
     _spec: Optional[ComposeSpec] = None
     _cli: Optional[CLI] = None
+    _cleanup_stack: List[Callable[[], Awaitable[None]]] = PrivateAttr(default_factory=list)
+    _registered_keys: set[str] = PrivateAttr(default_factory=set)
+    _entered: bool = PrivateAttr(default=False)
+
+    def _register_cleanup(self, coro_factory: Callable[[], Awaitable[None]], key: Optional[str] = None) -> None:
+        """Register an on-exit teardown.
+
+        ``coro_factory`` is a zero-argument callable returning a coroutine. It is
+        run when the deployment leaves its context manager, in LIFO order (so the
+        last resource created is the first torn down). Commands that create
+        resources (e.g. ``aup``, project initialization) use this so exit always
+        cleans up exactly what the body started.
+
+        ``key`` deduplicates: a teardown registered with a key already seen on this
+        deployment is skipped, so calling e.g. ``up(down_on_exit=True)`` twice still
+        downs only once. The first registration keeps its position in the stack.
+        """
+        if key is not None:
+            if key in self._registered_keys:
+                return
+            self._registered_keys.add(key)
+        self._cleanup_stack.append(coro_factory)
 
     @property
     def spec(self) -> ComposeSpec:
@@ -232,7 +275,8 @@ class Deployment(KoiledModel):
         """Initialize the deployment.
 
         Will initialize the deployment through its project and return the CLI object.
-        This method is called automatically when using the deployment as a context manager.
+        This is called lazily on first CLI access (when ``auto_initialize`` is True),
+        so you rarely call it directly.
 
         Returns
         -------
@@ -240,6 +284,13 @@ class Deployment(KoiledModel):
            The CLI object.
         """
         self._cli = await self.project.ainititialize()
+        # If we are inside a context manager and the policy tears the project
+        # down, make sure whatever the project created at initialize time (e.g. a
+        # CopyPathProject temp-dir copy) is removed on exit. ``atear_down`` is a
+        # no-op for projects that create nothing (LocalProject/DokkerProject).
+        if self._entered and TEARDOWN_POLICIES[self.policy].tear_down_project:
+            cli = self._cli
+            self._register_cleanup(lambda: self.project.atear_down(cli), key="project_teardown")
         return self._cli
 
     async def aretrieve_cli(self) -> "CLI":
@@ -377,8 +428,7 @@ class Deployment(KoiledModel):
 
         Will inspect the deployment through its project and return the compose spec, which
         can be used to retrieve information about the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if inspect_on_enter is True.
+        Call this from inside the context manager before reading ``deployment.spec``.
         Returns
         -------
         ComposeSpec
@@ -398,8 +448,7 @@ class Deployment(KoiledModel):
 
         Will inspect the deployment through its project and return the compose spec, which
         can be used to retrieve information about the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if inspect_on_enter is True.
+        Call this from inside the context manager before reading ``deployment.spec``.
 
         Returns
         -------
@@ -599,44 +648,95 @@ class Deployment(KoiledModel):
             rich_traceback=rich_traceback,
         )
 
-    async def aup(self, detach: bool = True) -> LogRoll:
+    def _resolve_exit_action(
+        self,
+        down_on_exit: Optional[bool],
+        stop_on_exit: Optional[bool],
+    ) -> Optional[str]:
+        """Decide what teardown ``up`` registers: ``"down"``, ``"stop"`` or None.
+
+        When neither argument is given (both ``None``), the deployment's
+        ``policy`` decides. An explicit argument is a local override. Passing
+        both as True is contradictory and raises.
+        """
+        if down_on_exit and stop_on_exit:
+            raise ValueError("Pass either down_on_exit or stop_on_exit, not both (down already stops the containers).")
+        if down_on_exit is None and stop_on_exit is None:
+            return TEARDOWN_POLICIES[self.policy].exit_action
+        if down_on_exit:
+            return "down"
+        if stop_on_exit:
+            return "stop"
+        return None
+
+    async def aup(
+        self,
+        detach: bool = True,
+        down_on_exit: Optional[bool] = None,
+        stop_on_exit: Optional[bool] = None,
+    ) -> LogRoll:
         """Up the deployment.
 
         Will call docker-compose up on the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if up_on_enter is True.
 
         Parameters
         ----------
         detach : bool, optional
             Should we run the up command in detached mode, by default True (otherwise you need to
             call it as a task yourself)
+        down_on_exit : Optional[bool], optional
+            Local override for the teardown registered on context-manager exit.
+            ``True`` registers a ``down`` (the stack is fully removed on exit),
+            ``False`` registers nothing. ``None`` (the default) follows the
+            deployment's ``policy``. Mutually exclusive with ``stop_on_exit``.
+        stop_on_exit : Optional[bool], optional
+            Local override: ``True`` registers a ``stop`` (containers stopped but
+            not removed) on exit. ``None`` (the default) follows the ``policy``.
+            Mutually exclusive with ``down_on_exit`` (down already stops them).
 
         Returns
         -------
         List[str]
             The logs of the up command.
         """
+        action = self._resolve_exit_action(down_on_exit, stop_on_exit)
+
         cli = await self.aretrieve_cli()
+        await self.project.abefore_up()
         logs = LogRoll()
         async for log in cli.astream_up(detach=detach):
             logs.append(log)
             self.logger.on_up(log)
 
+        if action == "down":
+            self._register_cleanup(self.adown, key="down")
+        elif action == "stop":
+            self._register_cleanup(self.astop, key="stop")
+
         return logs
 
-    def up(self, detach: bool = True) -> LogRoll:
+    def up(
+        self,
+        detach: bool = True,
+        down_on_exit: Optional[bool] = None,
+        stop_on_exit: Optional[bool] = None,
+    ) -> LogRoll:
         """Up the deployment.
 
         Will call docker-compose up on the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if up_on_enter is True.
 
         Parameters
         ----------
         detach : bool, optional
             Should we run the up command in detached mode, by default True (otherwise you need to
             call it as a task yourself, which is not recommended in sync code)
+        down_on_exit : Optional[bool], optional
+            Local override for the on-exit teardown: ``True`` downs, ``False``
+            does nothing, ``None`` (default) follows the deployment's ``policy``.
+            Mutually exclusive with ``stop_on_exit``.
+        stop_on_exit : Optional[bool], optional
+            Local override: ``True`` stops on exit, ``None`` (default) follows the
+            ``policy``. Mutually exclusive with ``down_on_exit``.
 
         Returns
         -------
@@ -644,7 +744,7 @@ class Deployment(KoiledModel):
             The logs of the up command.
         """
 
-        return unkoil(self.aup, detach=detach)
+        return unkoil(self.aup, detach=detach, down_on_exit=down_on_exit, stop_on_exit=stop_on_exit)
 
     async def arestart(
         self,
@@ -723,8 +823,6 @@ class Deployment(KoiledModel):
         """Pull the deployment.
 
         Will call docker-compose pull on the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if pull_on_enter is True.
 
         Returns
         -------
@@ -737,6 +835,7 @@ class Deployment(KoiledModel):
             If the deployment has not been initialized.
         """
         cli = await self.aretrieve_cli()
+        await self.project.abefore_pull()
 
         logs = LogRoll()
         async for log in cli.astream_pull():
@@ -748,8 +847,6 @@ class Deployment(KoiledModel):
         """Pull the deployment.
 
         Will call docker-compose pull on the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if pull_on_enter is True.
         Returns
         -------
         List[str]
@@ -770,8 +867,8 @@ class Deployment(KoiledModel):
         """Down the deployment.
 
         Will call docker-compose down on the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if down_on_exit is True.
+        This runs automatically on context exit if you started the stack with
+        ``up(down_on_exit=True)``.
 
         Parameters
         ----------
@@ -789,6 +886,7 @@ class Deployment(KoiledModel):
             The logs of the down command.
         """
         cli = await self.aretrieve_cli()
+        await self.project.abefore_down()
         if timeout is None:
             timeout = self.shutdown_timeout
         if volumes is None:
@@ -804,16 +902,12 @@ class Deployment(KoiledModel):
         return logs
 
     async def aremove(self) -> None:
-        """Down the deployment.
+        """Tear down the project.
 
-        Will call docker-compose down on the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if down_on_exit is True.
-
-        Returns
-        -------
-        List[str]
-            The logs of the down command.
+        Calls the project's ``atear_down`` (e.g. removing a CopyPathProject temp
+        dir). This also runs automatically on context exit for any project that
+        was initialized inside the block, so you only need to call it for manual,
+        out-of-context teardown.
         """
         cli = await self.aretrieve_cli()
 
@@ -838,8 +932,8 @@ class Deployment(KoiledModel):
         """Down the deployment.
 
         Will call docker-compose down on the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if down_on_exit is True.
+        This runs automatically on context exit if you started the stack with
+        ``up(down_on_exit=True)``.
 
         Parameters
         ----------
@@ -862,8 +956,8 @@ class Deployment(KoiledModel):
         """Stop the deployment.
 
         Will call docker-compose stop on the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if stop_on_exit is True.
+        This runs automatically on context exit if you started the stack with
+        ``up(stop_on_exit=True)``.
 
         Parameters
         ----------
@@ -877,6 +971,7 @@ class Deployment(KoiledModel):
             The logs of the stop command.
         """
         cli = await self.aretrieve_cli()
+        await self.project.abefore_stop()
         if timeout is None:
             timeout = self.shutdown_timeout
 
@@ -891,8 +986,8 @@ class Deployment(KoiledModel):
         """Stop the deployment.
 
         Will call docker-compose stop on the deployment.
-        This method is called automatically when using the deployment as a context manager and
-        if stop_on_exit is True.
+        This runs automatically on context exit if you started the stack with
+        ``up(stop_on_exit=True)``.
 
         Parameters
         ----------
@@ -920,50 +1015,30 @@ class Deployment(KoiledModel):
     async def __aenter__(self) -> Self:
         """Async enter method for the deployment.
 
-        Will initialize the project, if auto_initialize is True.
-        Will inspect the deployment, if inspect_on_enter is True.
-        Will call docker-compose up and pull on the deployment, if
-        up_on_enter and pull_on_enter are True respectively.
-
+        Entering does nothing on its own: no initialize, inspect, pull, up or
+        health-check happens here. You drive the lifecycle from inside the block
+        by calling the methods you need (``pull``, ``up``, ``inspect``,
+        ``check_health``, ...). Commands that create resources register their own
+        teardown (e.g. ``up(down_on_exit=True)``, or project initialization which
+        auto-registers a tear-down of any temp dir it created), so exit cleans up
+        exactly what the body started.
         """
-        if self.initialize_on_enter:
-            await self.ainitialize()
-
-        if self.inspect_on_enter:
-            await self.ainspect()
-
-        if self.pull_on_enter:
-            await self.project.abefore_pull()
-            await self.apull()
-
-        if self.up_on_enter:
-            await self.project.abefore_up()
-            await self.aup()
-
-        if self.health_on_enter:
-            if self.health_checks:
-                await self.acheck_health()
-
+        self._entered = True
+        self._cleanup_stack = []
+        self._registered_keys = set()
         return self
 
     async def _arun_teardown(self) -> None:
-        """Run the configured on-exit teardown steps.
+        """Run the registered on-exit teardown steps.
 
-        This stops, downs and tears down the deployment according to the
-        ``*_on_exit`` flags. It is factored out of ``__aexit__`` so it can be
+        Cleanups registered by the body (``up(down_on_exit=True)``, project
+        initialization, ...) are run in LIFO order, so the last resource created
+        is the first torn down. Factored out of ``__aexit__`` so it can be
         wrapped in an overall ``teardown_timeout`` guard.
         """
-        if self.stop_on_exit or self.down_on_exit:
-            await self.project.abefore_stop()
-            await self.astop(self.shutdown_timeout)
-
-        if self.down_on_exit:
-            await self.project.abefore_down()
-            await self.adown()
-
-        if self.tear_down_on_exit:
-            if self._cli:
-                await self.project.atear_down(self._cli)
+        while self._cleanup_stack:
+            cleanup = self._cleanup_stack.pop()
+            await cleanup()
 
     async def __aexit__(
         self,
@@ -973,8 +1048,8 @@ class Deployment(KoiledModel):
     ) -> None:
         """Async exit method for the deployment.
 
-        Will stop, down and tear down the deployment according to the
-        ``stop_on_exit``/``down_on_exit``/``tear_down_on_exit`` flags.
+        Will run every teardown the body registered (``up(down_on_exit=True)``,
+        project initialization, ...) in LIFO order.
 
         Teardown is bounded: every ``stop``/``down`` carries the
         ``shutdown_timeout`` grace period, and the whole sequence is wrapped in
@@ -1001,4 +1076,7 @@ class Deployment(KoiledModel):
             else:
                 raise
         finally:
+            self._cleanup_stack = []
+            self._registered_keys = set()
+            self._entered = False
             self._cli = None

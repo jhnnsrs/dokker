@@ -11,6 +11,9 @@ with testing(
     ],
     shutdown_timeout=1,
 ) as deployment:
+    deployment.pull()
+    deployment.up()  # "testing" policy: downs on exit
+    deployment.inspect()
     print(deployment.check_health())
 
     print(deployment.run("worker", "timeout 10 sleep 10", raise_on_error=False))

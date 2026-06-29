@@ -15,7 +15,7 @@ def test_up_down():
     ) as l:
         l.down()
 
-        l.up()
+        l.up(down_on_exit=True)
 
         answer = l.run("worker", "echo 'hello world'")
         assert "hello world" in answer.stdout, f"Expected 'hello world', got {answer}"
@@ -33,7 +33,7 @@ async def test_up_down_async():
     ) as l:
         await l.adown()
 
-        await l.aup()
+        await l.aup(down_on_exit=True)
 
         await l.acheck_health()
 

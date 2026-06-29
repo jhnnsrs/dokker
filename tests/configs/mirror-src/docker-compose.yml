@@ -1,0 +1,8 @@
+# Source project for the ``mirror`` integration test. ``CopyPathProject`` copies
+# this directory into ``.dokker/<project>/`` and runs it from there, so it must
+# be named ``docker-compose.yml`` exactly (see dokker/projects/copy.py). A single
+# idle alpine service keeps it light.
+services:
+  store:
+    image: alpine:3.20
+    command: ["sleep", "infinity"]

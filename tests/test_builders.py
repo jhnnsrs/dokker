@@ -61,3 +61,21 @@ def test_testing_orphan_and_volume_removal_configurable():
     off = make_testing(COMPOSE_FILE, remove_orphans=False, remove_volumes=False)
     assert off.remove_orphans_on_down is False
     assert off.remove_volumes_on_down is False
+
+
+def test_builders_set_their_default_policy():
+    assert make_testing(COMPOSE_FILE).policy == "testing"
+    assert local(COMPOSE_FILE).policy == "local"
+    assert monitoring(COMPOSE_FILE).policy == "monitoring"
+
+
+def test_local_keeps_volumes_and_orphans_by_default():
+    # A local stack is yours to keep: a `down` must not wipe data by default.
+    deployment = local(COMPOSE_FILE)
+    assert deployment.remove_volumes_on_down is False
+    assert deployment.remove_orphans_on_down is False
+
+
+def test_policy_is_overridable_on_builders():
+    assert local(COMPOSE_FILE, policy="manual").policy == "manual"
+    assert make_testing(COMPOSE_FILE, policy="local").policy == "local"

@@ -18,4 +18,12 @@ def basic_project() -> Generator[Deployment, None, None]:
         # keeps teardown from blocking the full default 10s per container.
         shutdown_timeout=1,
     ) as deployment:
+        # Nothing happens on enter; drive the lifecycle explicitly. Under the
+        # `testing` policy a bare `up()` registers the on-exit `down` (which runs
+        # when this `with` block exits, after the test session). `inspect()`
+        # populates `deployment.spec`.
+        deployment.pull()
+        deployment.up()
+        deployment.inspect()
+        deployment.check_health()
         yield deployment

@@ -1,0 +1,15 @@
+# A tiny stack with a NAMED VOLUME, used to prove that ``down`` removes volumes
+# (``--volumes``) by default on teardown. The single service just idles; the
+# point is the volume it declares, which Compose creates on ``up`` as
+# ``<project>_data`` and which a default ``down`` must remove.
+name: dokker-volume-test
+
+services:
+  store:
+    image: alpine:3.20
+    command: ["sleep", "infinity"]
+    volumes:
+      - data:/data
+
+volumes:
+  data:
