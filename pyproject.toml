@@ -1,6 +1,6 @@
 [project]
 name = "dokker"
-version = "2.5.0"
+version = "2.6.0"
 description = "manager dokker compose projects (asynchronously) with python"
 authors = [{ name = "jhnnsrs", email = "jhnnsrs@gmail.com" }]
 requires-python = ">=3.11"

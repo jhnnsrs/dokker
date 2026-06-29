@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v2.6.0 (2026-06-29)
+
+### Chores
+
+- Update readme and pyproject
+  ([`755c498`](https://github.com/jhnnsrs/dokker/commit/755c498b451253d037a492a71c403392cae9e9be))
+
+### Features
+
+- Policy based
+  ([`e12dfcb`](https://github.com/jhnnsrs/dokker/commit/e12dfcb65e642a81d2665464b77e1a9039f136d9))
+
+
 ## v2.5.0 (2026-06-11)
 
 ### Features
