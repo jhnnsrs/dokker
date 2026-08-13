@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v2.7.0 (2026-08-13)
+
+### Features
+
+- With some pytest11 plugin
+  ([`304f589`](https://github.com/jhnnsrs/dokker/commit/304f5893110311aa102dfd157d035bb43ae6167d))
+
+
 ## v2.6.0 (2026-06-29)
 
 ### Chores
