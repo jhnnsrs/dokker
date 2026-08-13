@@ -145,3 +145,5 @@ export
 static_collected
 data
 token.temp
+# Scratch dir created by mirror()/CopyPathProject (base_dir defaults to ./.dokker)
+.dokker/

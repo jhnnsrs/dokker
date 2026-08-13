@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import Annotated
 
 from dokker.errors import LabelNotFoundError, PortNotFoundError, ServiceNotFoundError
@@ -122,17 +122,26 @@ class ComposeConfigService(BaseModel):
     def get_port_for_internal(self, port: int) -> "ComposeServicePort":
         """Get the published port mapping for an internal (target) port.
 
+        Note this reads the *declared* compose configuration, so it only knows
+        ports that were pinned in the compose file. A service declaring
+        ``ports: ["5678"]`` lets docker pick a free host port at runtime, which
+        does not appear here at all -- use ``Deployment.get_port()`` for that.
+
         Raises
         ------
         PortNotFoundError
-            If the service exposes no ports, or none of them map the given
-            internal port.
+            If the service exposes no ports, none of them map the given internal
+            port, or the mapping has no statically declared host port.
         """
         if not self.ports:
             raise PortNotFoundError("No ports found in the service. Please check the service configuration.")
 
         for i in self.ports:
             if i.target == port:
+                if i.published is None:
+                    # Returning the mapping here would hand back published=None,
+                    # which silently formats into URLs as "http://localhost:None".
+                    raise PortNotFoundError(f"Internal port {port} is published on a dynamically assigned host port, which the compose config does not contain. Use `deployment.get_port('<service>', {port})` to resolve the actual host port of the running container.")
                 return i
 
         available = sorted(p.target for p in self.ports if p.target is not None)
@@ -161,6 +170,55 @@ class ComposeConfigVolume(BaseModel):
     external: Optional[bool] = None
     labels: Annotated[Optional[Dict[str, str]], Field(default_factory=dict)]
     name: Optional[str] = None
+
+
+class ContainerPublisher(BaseModel):
+    """A published port of a running container, as reported by `compose ps`."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: Optional[str] = Field(default=None, alias="URL")
+    target_port: Optional[int] = Field(default=None, alias="TargetPort")
+    published_port: Optional[int] = Field(default=None, alias="PublishedPort")
+    protocol: Optional[str] = Field(default=None, alias="Protocol")
+
+
+class ContainerStatus(BaseModel):
+    """The runtime state of one container, as reported by `docker compose ps`.
+
+    This is the counterpart to `ComposeConfigService`: that describes what the
+    compose file *declares*, this describes what is actually running -- state,
+    health, and the host ports docker really assigned.
+
+    Compose emits these with capitalised keys, hence the aliases; extra keys are
+    ignored so that new compose versions adding fields do not break parsing.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    name: str = Field(alias="Name")
+    service: str = Field(alias="Service")
+    state: str = Field(default="", alias="State", description="e.g. `running`, `exited`, `created`.")
+    health: str = Field(default="", alias="Health", description="Docker's healthcheck verdict: `healthy`, `unhealthy`, `starting`, or empty when the service declares no healthcheck.")
+    exit_code: Optional[int] = Field(default=None, alias="ExitCode")
+    image: Optional[str] = Field(default=None, alias="Image")
+    publishers: List[ContainerPublisher] = Field(default_factory=list, alias="Publishers")
+
+    @property
+    def is_running(self) -> bool:
+        """Whether the container is currently running."""
+        return self.state == "running"
+
+    @property
+    def is_healthy(self) -> bool:
+        """Whether docker considers the container healthy.
+
+        A container that declares no healthcheck reports an empty health string;
+        for those, running is the best available answer.
+        """
+        if not self.health:
+            return self.is_running
+        return self.health == "healthy"
 
 
 class ComposeSpec(BaseModel):

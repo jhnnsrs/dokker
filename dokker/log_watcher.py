@@ -1,11 +1,14 @@
 import inspect
+import re
 from types import TracebackType
+from koil import unkoil
 from koil.composition import KoiledModel
 import asyncio
 from typing import Optional, List, Self, Tuple, Type, Union, Generator
 from dokker.cli import CLIBearer
 from pydantic import Field
 
+from dokker.errors import LogWatcherTimeoutError
 from dokker.types import LogFunction
 
 
@@ -84,6 +87,7 @@ class LogWatcher(KoiledModel):
     stream: bool = True
     services: Union[str, List[str]] = []
     wait_for_first_log: bool = True
+    wait_for_first_log_timeout: float = 10.0
     wait_for_logs: bool = False
     wait_for_logs_timeout: int = 10
     collected_logs: LogRoll = Field(default_factory=LogRoll)
@@ -104,34 +108,146 @@ class LogWatcher(KoiledModel):
                 self.log_function(log)
 
     async def awatch_logs(self) -> None:
-        """Asynchronous function to watch logs."""
-        cli = await self.cli_bearer.aget_cli()
-        async for logtuple in cli.astream_docker_logs(
-            tail=str(self.tail) if self.tail else None,
-            follow=self.follow,
-            no_log_prefix=self.no_log_prefix,
-            timestamps=self.timestamps,
-            since=self.since,
-            until=self.until,
-            services=self.services,
-        ):
+        """Asynchronous function to watch logs.
+
+        A failure here (a nonexistent service, an unreachable daemon) is handed
+        to ``_just_one_log`` so that an ``__aenter__`` waiting on the first log
+        fails with the real cause instead of waiting forever for a log line that
+        can never arrive.
+        """
+        try:
+            cli = await self.cli_bearer.aget_cli()
+            async for logtuple in cli.astream_docker_logs(
+                tail=str(self.tail) if self.tail else None,
+                follow=self.follow,
+                no_log_prefix=self.no_log_prefix,
+                timestamps=self.timestamps,
+                since=self.since,
+                until=self.until,
+                services=self.services,
+            ):
+                if self._just_one_log is not None and not self._just_one_log.done():
+                    self._just_one_log.set_result(True)
+                await self.aon_logs(logtuple)
+                self.collected_logs.append(logtuple)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            # Wake whoever is waiting on the first log with the actual error.
             if self._just_one_log is not None and not self._just_one_log.done():
-                self._just_one_log.set_result(True)
-            await self.aon_logs(logtuple)
-            self.collected_logs.append(logtuple)
+                self._just_one_log.set_exception(e)
+            raise
+        else:
+            # The stream ended without producing anything (e.g. `follow=False`
+            # against a service that has logged nothing). Release the waiter
+            # rather than leaving it pending forever.
+            if self._just_one_log is not None and not self._just_one_log.done():
+                self._just_one_log.set_result(False)
 
     async def __aenter__(self) -> Self:
-        """Asynchronous context manager to enter the log watcher."""
+        """Asynchronous context manager to enter the log watcher.
+
+        When ``wait_for_first_log`` is set, the wait is bounded by
+        ``wait_for_first_log_timeout``. An unbounded wait here is a silent hang:
+        the future is only ever resolved from ``awatch_logs``, so a service that
+        never logs -- or a watcher pointed at a service name that does not exist
+        -- would block the caller (typically a whole test session) with no
+        output at all.
+        """
         self.collected_logs = LogRoll()
         self._just_one_log = asyncio.Future()
         self._watch_task = asyncio.create_task(self.awatch_logs())
 
         if self.wait_for_first_log:
-            await self._just_one_log
+            try:
+                await asyncio.wait_for(self._just_one_log, self.wait_for_first_log_timeout)
+            except asyncio.TimeoutError:
+                await self._acancel_watch_task()
+                raise LogWatcherTimeoutError(f"No log line arrived from {self.services or 'any service'} within {self.wait_for_first_log_timeout}s. Pass `wait_for_first_log=False` if the service is expected to be quiet, or raise `wait_for_first_log_timeout`.") from None
+            except BaseException:
+                # The watch task failed (bad service name, daemon down). Reap it
+                # so the error is not also reported as "never retrieved".
+                await self._acancel_watch_task()
+                raise
 
         self._just_one_log = asyncio.Future()
 
         return self
+
+    def await_log(self, pattern: str, timeout: float = 30.0) -> str:
+        """Block until a collected log line matches ``pattern``. See ``aawait_log``."""
+        return unkoil(self.aawait_log, pattern, timeout=timeout)
+
+    async def aawait_log(self, pattern: str, timeout: float = 30.0) -> str:
+        """Block until a collected log line matches ``pattern``.
+
+        Turns the watcher from "capture logs while I work" into a synchronisation
+        primitive: wait for the line that means the thing you triggered has
+        actually happened, instead of sleeping and hoping.
+
+        Lines already captured since the watcher was entered count, so there is
+        no race between the event happening and this call being made.
+
+        Parameters
+        ----------
+        pattern : str
+            Regular expression searched for in each log line.
+        timeout : float
+            Seconds to wait before giving up.
+
+        Returns
+        -------
+        str
+            The first matching log line.
+
+        Raises
+        ------
+        LogWatcherTimeoutError
+            If no line matches within ``timeout``.
+        """
+        regex = re.compile(pattern)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        seen = 0
+
+        while True:
+            # Re-scan only what is new since the last pass.
+            for _, line in list(self.collected_logs)[seen:]:
+                if regex.search(line):
+                    return line
+            seen = len(self.collected_logs)
+
+            if self._watch_task is not None and self._watch_task.done():
+                # Surface a stream failure rather than waiting out the timeout.
+                exc = self._watch_task.exception()
+                if exc is not None:
+                    raise exc
+
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise LogWatcherTimeoutError(f"No log line matching /{pattern}/ arrived from {self.services or 'any service'} within {timeout}s. Captured {len(self.collected_logs)} line(s).")
+
+            await asyncio.sleep(min(0.05, remaining))
+
+    async def _acancel_watch_task(self) -> Optional[BaseException]:
+        """Cancel and reap the background watch task, if any.
+
+        Returns the exception the task died of, if it failed on its own before
+        being cancelled. A normal follow-stream only ever ends by cancellation,
+        so anything else is a real failure the caller should hear about.
+        """
+        if self._watch_task is None:
+            return None
+
+        task, self._watch_task = self._watch_task, None
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            return None
+        except Exception as e:
+            return e
+        return None
 
     async def __aexit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
         """Asynchronous context manager to exit the log watcher.
@@ -141,7 +257,14 @@ class LogWatcher(KoiledModel):
         through the ``with`` block -- a Ctrl-C, a failed assertion, a request
         error. Doing the teardown in a ``finally`` is what stops those cases
         from leaking a ghost streaming task and an orphaned follow process.
+
+        If the stream itself failed (most commonly: the watched service does not
+        exist), that failure is raised here -- but only when the block completed
+        normally, so it can never mask an exception the body was already
+        propagating. Swallowing it would leave the watcher silently collecting
+        nothing, which looks like a passing test.
         """
+        watch_error: Optional[BaseException] = None
         try:
             if exc_type is not None and self.append_to_traceback:
                 new_message = format_log_watcher_message(self, exc_val, rich=self.rich_traceback)
@@ -156,12 +279,7 @@ class LogWatcher(KoiledModel):
                 if self._just_one_log is not None:
                     await asyncio.wait_for(self._just_one_log, self.wait_for_logs_timeout)
         finally:
-            if self._watch_task is not None:
-                self._watch_task.cancel()
+            watch_error = await self._acancel_watch_task()
 
-                try:
-                    await self._watch_task
-                except asyncio.CancelledError:
-                    pass
-
-            self._watch_task = None
+        if watch_error is not None and exc_type is None:
+            raise watch_error

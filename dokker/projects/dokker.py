@@ -5,6 +5,7 @@ from dokker.cli import CLI
 from typing import Dict, Any, Optional
 import logging
 import os
+from dokker.projects.copy import COMPOSE_FILE_NAMES
 from dokker.projects.errors import ProjectError
 
 logger = logging.getLogger(__name__)
@@ -46,9 +47,12 @@ class DokkerProject(BaseModel):
         if not os.path.exists(self._project_dir):
             raise DokkerProjectError(f"No project found with the name {self.name} in {self.base_dir}. Available projects: {os.listdir(self.base_dir)}")
 
-        compose_file = os.path.join(self._project_dir, "docker-compose.yaml")
-        if not os.path.exists(compose_file):
-            raise Exception("No docker-compose.yml found in the template. It appears that the template is not a valid dokker template.")
+        compose_file = next(
+            (os.path.join(str(self._project_dir), name) for name in COMPOSE_FILE_NAMES if os.path.exists(os.path.join(str(self._project_dir), name))),
+            None,
+        )
+        if compose_file is None:
+            raise DokkerProjectError(f"No compose file found in {self._project_dir}. Expected one of: {', '.join(COMPOSE_FILE_NAMES)}.")
 
         return CLI(
             compose_files=[compose_file],

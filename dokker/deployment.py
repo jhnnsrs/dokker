@@ -1,19 +1,19 @@
 from types import TracebackType
 import aiohttp.client_exceptions
 import aiohttp.http_exceptions
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
-from typing import Awaitable, Dict, Literal, Optional, List, Protocol, Self, Type, runtime_checkable
+from pydantic import BaseModel, ConfigDict, Field, InstanceOf, PrivateAttr
+from typing import Any, Awaitable, Dict, Literal, Optional, List, Protocol, Self, Type, runtime_checkable
 from koil.composition import KoiledModel
 from dataclasses import dataclass
 import asyncio
 from pathlib import Path
-from dokker.compose_spec import ComposeSpec
+from dokker.compose_spec import ComposeSpec, ContainerStatus
 from dokker.project import Project
 from typing import Union
 from koil import unkoil
 from dokker.cli import CLI
 from dokker.loggers.void import VoidLogger
-from dokker.types import LogFunction
+from dokker.types import LogFunction, LogStream
 from .log_watcher import LogRoll, LogWatcher
 import aiohttp
 import certifi
@@ -24,6 +24,10 @@ from dokker.errors import NotInitializedError, NotInspectedError, HealthCheckErr
 from dokker.command import CommandError
 import logging
 
+# Runtime (not TYPE_CHECKING) import: `Check` is used as a pydantic field
+# annotation below, so it has to be resolvable when the model is built.
+# `dokker.checks` deliberately does not import this module, so there is no cycle.
+from dokker.checks import Check, CheckContext
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +89,11 @@ class HealthCheck(BaseModel):
     url: Union[str, Callable[[ComposeSpec], str]] = Field(description="The url to check. Can be a string or a callable that takes the compose spec as an argument and returns a string.")
     service: str = Field(description="The service to check.")
     max_retries: int = Field(default=3, description="The maximum number of retries before failing.")
-    timeout: int = Field(default=10, description="The timeout between retries.")
+    timeout: int = Field(default=10, description="Seconds to sleep *between* retries. This is not a request timeout -- see `request_timeout`.")
+    request_timeout: float = Field(
+        default=10.0,
+        description="Seconds to wait for a single HTTP request before treating the attempt as failed. Without this, a service that accepts the connection but never responds blocks on aiohttp's 5-minute default, once per retry.",
+    )
     error_with_logs: bool = Field(
         default=True,
         description="Should we error with the logs of the service (will inspect container logs of the service).",
@@ -116,6 +124,7 @@ class HealthCheck(BaseModel):
         async with aiohttp.ClientSession(
             headers=self.headers,
             connector=aiohttp.TCPConnector(ssl=self.ssl_context),
+            timeout=aiohttp.ClientTimeout(total=self.request_timeout),
         ) as session:
             # get json from endpoint
             url = self.url if isinstance(self.url, str) else self.url(spec)
@@ -123,12 +132,23 @@ class HealthCheck(BaseModel):
             try:
                 async with session.get(url) as resp:
                     if resp.status not in self.valid_statuses:
-                        raise HealthCheckError(f"Status is not in valid statuses. Got {resp.status}, wants on of {self.valid_statuses} ")
+                        raise HealthCheckError(f"Health check for service `{self.service}` at {url} returned status {resp.status}, expected one of {self.valid_statuses}.")
                     return await resp.text()
+            except asyncio.TimeoutError as e:
+                raise HealthCheckError(f"Health check for service `{self.service}` at {url} timed out after {self.request_timeout}s.") from e
             except aiohttp.http_exceptions.BadHttpMessage as e:
-                raise HealthCheckError("Health test Failed") from e
+                raise HealthCheckError(f"Health check for service `{self.service}` at {url} got a malformed HTTP response: {e}") from e
             except aiohttp.client_exceptions.ClientError as e:
-                raise HealthCheckError("Health test failed") from e
+                raise HealthCheckError(f"Health check for service `{self.service}` at {url} could not connect: {e}") from e
+
+    async def aperform(self, ctx: "CheckContext") -> None:
+        """Run this check against a deployment.
+
+        Adapter onto the generic `Check` protocol (see `dokker.checks`), which
+        also covers non-HTTP readiness. Delegates to `acheck` so subclasses that
+        override it keep working.
+        """
+        await self.acheck(ctx.spec)
 
 
 @runtime_checkable
@@ -159,11 +179,18 @@ class Logger(Protocol):
 class Deployment(KoiledModel):
     """A deployment is a set of services that are deployed together."""
 
-    project: Project = Field(default_factory=Project)
+    # Required, and InstanceOf so pydantic validates by isinstance rather than
+    # trying to construct the protocol. The previous `default_factory=Project`
+    # could never fire: instantiating a Protocol always raises TypeError, so
+    # `Deployment()` without a project was unconstructible rather than defaulted.
+    project: InstanceOf[Project] = Field(description="The project backing this deployment; supplies the CLI and the before/after command hooks.")
 
-    health_checks: List[HealthCheck] = Field(
+    # InstanceOf, not a bare `Check`: pydantic would otherwise try to *construct*
+    # the protocol to validate each item. This validates by isinstance instead,
+    # which is what `runtime_checkable` gives us.
+    health_checks: List[InstanceOf[Check]] = Field(
         default_factory=lambda: [],
-        description="A list of health checks to run on the deployment. These are run when the deployment is up and running.",
+        description="Readiness checks to run on the deployment. Any object satisfying the `Check` protocol works: the HTTP `HealthCheck`, or `TcpCheck`/`CommandCheck`/`ContainerCheck`/`LogCheck` from `dokker.checks`.",
     )
     policy: PolicyName = Field(
         default="manual",
@@ -199,7 +226,8 @@ class Deployment(KoiledModel):
     )
     threadpool_workers: int = Field(
         default=10,
-        description="The number of workers to use for the threadpool. This is used for the health checks and the log watcher.",
+        description="Deprecated and unused: nothing in dokker reads this. Health checks and the log watcher run as asyncio tasks, not on a threadpool. Kept so existing constructor calls do not break; it will be removed in a future release.",
+        deprecated=True,
     )
 
     pull_logs: Optional[List[str]] = Field(
@@ -224,11 +252,11 @@ class Deployment(KoiledModel):
 
     _spec: Optional[ComposeSpec] = None
     _cli: Optional[CLI] = None
-    _cleanup_stack: List[Callable[[], Awaitable[None]]] = PrivateAttr(default_factory=list)
+    _cleanup_stack: List[Callable[[], Awaitable[Any]]] = PrivateAttr(default_factory=list)
     _registered_keys: set[str] = PrivateAttr(default_factory=set)
     _entered: bool = PrivateAttr(default=False)
 
-    def _register_cleanup(self, coro_factory: Callable[[], Awaitable[None]], key: Optional[str] = None) -> None:
+    def _register_cleanup(self, coro_factory: Callable[[], Awaitable[Any]], key: Optional[str] = None) -> None:
         """Register an on-exit teardown.
 
         ``coro_factory`` is a zero-argument callable returning a coroutine. It is
@@ -343,10 +371,33 @@ class Deployment(KoiledModel):
             different from ``expected_exit_code``.
         """
         cli = await self.aretrieve_cli()
+        return await self._acollect_command(
+            cli.astream_run(service=service, command=command),
+            what=f"Command in service `{service}`",
+            raise_on_error=raise_on_error,
+            expected_exit_code=expected_exit_code,
+            command=command,
+        )
+
+    async def _acollect_command(
+        self,
+        stream: LogStream,
+        what: str,
+        raise_on_error: bool,
+        expected_exit_code: int,
+        command: Union[List[str], str],
+    ) -> LogRoll:
+        """Drain a command stream into a LogRoll, applying exit-code policy.
+
+        Shared by ``arun`` and ``aexec``: both need the same treatment of the
+        exit code (record it on the roll, raise only when it differs from what
+        the caller expected) and both benefit from the command layer's rich
+        ``CommandError``, which keeps stdout and stderr apart.
+        """
         logs = LogRoll()
         error: Optional[CommandError] = None
         try:
-            async for log in cli.astream_run(service=service, command=command):
+            async for log in stream:
                 logs.append(log)
                 self.logger.on_logs(log)
         except CommandError as e:
@@ -367,7 +418,7 @@ class Deployment(KoiledModel):
                     error.args = (f"{error.args[0]}\n\nExpected exit code {expected_exit_code}, got {returncode}.",)
                 raise error
             raise CommandError(
-                f"Command in service `{service}` exited with code {returncode}, expected {expected_exit_code}.\n\n" + ("STDOUT:\n" + logs.stdout if logs.stdout else "No output was captured."),
+                f"{what} exited with code {returncode}, expected {expected_exit_code}.\n\n" + ("STDOUT:\n" + logs.stdout if logs.stdout else "No output was captured."),
                 command=command if isinstance(command, str) else " ".join(command),
                 returncode=returncode,
                 stdout=logs.stdout_list,
@@ -461,6 +512,120 @@ class Deployment(KoiledModel):
         """
         return unkoil(self.ainspect)
 
+    async def aget_port(self, service: str, private_port: int, protocol: str = "tcp", index: Optional[int] = None) -> int:
+        """Resolve the host port a service's container port is published on.
+
+        Unlike ``spec.services[...].get_port_for_internal(...)``, which reads the
+        *declared* compose configuration, this asks the running stack. That makes
+        it the only way to use dynamically assigned ports -- declaring
+        ``ports: ["5678"]`` (no host port) lets docker pick a free one, so several
+        copies of the same stack can run at once without fighting over a fixed
+        host port.
+
+        Parameters
+        ----------
+        service : str
+            The service to resolve the port for.
+        private_port : int
+            The container-internal port.
+        protocol : str
+            ``tcp`` (default) or ``udp``.
+        index : Optional[int]
+            Which replica to ask, when the service is scaled.
+
+        Returns
+        -------
+        int
+            The host port.
+        """
+        cli = await self.aretrieve_cli()
+        _, port = await cli.aport(service, private_port, protocol=protocol, index=index)
+        return port
+
+    def get_port(self, service: str, private_port: int, protocol: str = "tcp", index: Optional[int] = None) -> int:
+        """Resolve the host port a service's container port is published on.
+
+        See ``aget_port`` for details.
+        """
+        return unkoil(self.aget_port, service, private_port, protocol=protocol, index=index)
+
+    async def aget_url(
+        self,
+        service: str,
+        private_port: int,
+        scheme: str = "http",
+        host: str = "localhost",
+        path: str = "",
+    ) -> str:
+        """Build a URL pointing at a service's published port.
+
+        The convenience that removes the most boilerplate from a test: it
+        resolves the real runtime port, so the same test works whether the
+        compose file pins a host port or lets docker assign one.
+
+        Parameters
+        ----------
+        service : str
+            The service to build a URL for.
+        private_port : int
+            The container-internal port.
+        scheme : str
+            URL scheme, ``http`` by default.
+        host : str
+            Host to address the container on, ``localhost`` by default.
+        path : str
+            Optional path to append (a leading ``/`` is added if missing).
+
+        Returns
+        -------
+        str
+            e.g. ``http://localhost:32768/health``
+        """
+        port = await self.aget_port(service, private_port)
+        if path and not path.startswith("/"):
+            path = "/" + path
+        return f"{scheme}://{host}:{port}{path}"
+
+    def get_url(
+        self,
+        service: str,
+        private_port: int,
+        scheme: str = "http",
+        host: str = "localhost",
+        path: str = "",
+    ) -> str:
+        """Build a URL pointing at a service's published port.
+
+        See ``aget_url`` for details.
+        """
+        return unkoil(self.aget_url, service, private_port, scheme=scheme, host=host, path=path)
+
+    async def aps(self, services: Optional[List[str]] = None, all: bool = True) -> List[ContainerStatus]:
+        """List the deployment's containers and their runtime state.
+
+        Parameters
+        ----------
+        services : Optional[List[str]]
+            Restrict to these services. None lists the whole project.
+        all : bool
+            Include stopped containers, True by default -- a crashed container is
+            usually exactly the one you are looking for.
+
+        Returns
+        -------
+        List[ContainerStatus]
+            One entry per container, with state, health and published ports.
+        """
+        cli = await self.aretrieve_cli()
+        return await cli.aps(services=services, all=all)
+
+    def ps(self, services: Optional[List[str]] = None, all: bool = True) -> List[ContainerStatus]:
+        """List the deployment's containers and their runtime state.
+
+        See ``aps`` for details.
+        """
+        return unkoil(self.aps, services=services, all=all)
+
     def add_health_check(
         self,
         url: Union[str, Callable[[ComposeSpec], str]],
@@ -501,18 +666,23 @@ class Deployment(KoiledModel):
         self.health_checks.append(check)
         return check
 
-    async def arun_check(self, check: HealthCheck, retry: int = 0) -> None:
-        """Run a health check.
+    async def arun_check(self, check: "Check", retry: int = 0, timeout: Optional[int] = None) -> None:
+        """Run a single readiness check, retrying until it passes or gives up.
 
-        This method will make a request to the given URL and check the response status.
-        If the status is not in the valid statuses, an error will be raised.
+        Any `Check` is accepted -- the HTTP `HealthCheck` as well as the
+        socket/command/container/log checks in `dokker.checks`.
+
         Parameters
         ----------
-        check : HealthCheck
-            The health check to run.
+        check : Check
+            The check to run.
         retry : int
-            The number of retries already done.
+            The number of retries already done. Attempts start from here.
+        timeout : Optional[int]
+            Override the seconds slept between retries. None uses the check's own
+            `timeout`.
         """
+        from dokker.checks import CheckContext
 
         if not self._spec:
             self._spec = await self.ainspect()
@@ -520,56 +690,85 @@ class Deployment(KoiledModel):
         if not self._cli:
             self._cli = await self.ainitialize()
 
-        try:
-            await check.acheck(self._spec)
-        except HealthCheckError as e:
-            if retry < check.max_retries:
-                await asyncio.sleep(check.timeout)
-                await self.arun_check(check, retry=retry + 1)
-            else:
-                if not check.error_with_logs:
-                    raise HealthCheckError(f"Health check failed after {check.max_retries} retries. Logs are disabled.") from e
+        ctx = CheckContext(spec=self._spec, cli=self._cli)
+        sleep_for = timeout if timeout is not None else check.timeout
+
+        # A loop, not recursion: recursing once per retry makes stack depth grow
+        # with `max_retries`.
+        attempt = retry
+        while True:
+            try:
+                await check.aperform(ctx)
+                return
+            except HealthCheckError as e:
+                if attempt < check.max_retries:
+                    attempt += 1
+                    await asyncio.sleep(sleep_for)
+                    continue
+
+                describe = f"`{type(check).__name__}` for service `{check.service}`"
+                if not getattr(check, "error_with_logs", True):
+                    raise HealthCheckError(f"Health check {describe} failed after {check.max_retries} retries: {e}\n\n(Service logs are disabled for this check.)") from e
 
                 logs = LogRoll()
+                try:
+                    async for log in self._cli.astream_docker_logs(services=[check.service], follow=False):
+                        logs.append(log)
+                except CommandError:
+                    # Failing to fetch logs must not replace the health error.
+                    pass
 
-                async for log in self._cli.astream_docker_logs(services=[check.service]):
-                    logs.append(log)
+                raise HealthCheckError(f"Health check {describe} failed after {check.max_retries} retries: {e}\n\nService logs:\n" + ("\n".join(i for _, i in logs) if logs else "(no logs captured)")) from e
 
-                raise HealthCheckError(f"Health check failed after {check.max_retries} retries. Logs:\n" + "\n".join(i for _, i in logs)) from e
-
-    async def acheck_health(self, timeout: int = 3, retry: int = 0, services: Optional[List[str]] = None) -> None:
-        """Check the health of the deployment.
-
-        This method will make a request to all the health checks and check the response status
-        concurrently.
-
-        If the status is not in the valid statuses, an error will be raised.
+    async def acheck_health(self, timeout: Optional[int] = None, retry: int = 0, services: Optional[List[str]] = None) -> None:
+        """Check the health of the deployment, running all checks concurrently.
 
         Parameters
         ----------
-        timeout : int
-            The timeout between retries.
+        timeout : Optional[int]
+            Override the seconds slept between retries for every check. None (the
+            default) lets each check use its own `timeout`.
         retry : int
-            The number of retries already done.
+            The number of retries already considered done, for every check.
         services : Optional[List[str]]
-            The list of services to check. If None, all services will be checked.
+            Only run checks for these services. If None, all checks run.
+
+        Raises
+        ------
+        HealthCheckError
+            If a check fails, or if `services` names a service that has no check
+            registered -- an unmatched name would otherwise gather nothing and
+            report success, so `restart(await_health=True)` on an uncovered
+            service would pass without testing anything.
         """
-
         if services is None:
-            services = [check.service for check in self.health_checks]  # we check all services
+            selected = list(self.health_checks)
+        else:
+            selected = [check for check in self.health_checks if check.service in services]
+            uncovered = sorted(set(services) - {check.service for check in self.health_checks})
+            if uncovered:
+                raise HealthCheckError(f"No health check is registered for {', '.join('`' + s + '`' for s in uncovered)}. Registered checks cover: {sorted({c.service for c in self.health_checks}) or 'nothing'}.")
 
-        await asyncio.gather(*[self.arun_check(check) for check in self.health_checks if check.service in services])
+        await asyncio.gather(*[self.arun_check(check, retry=retry, timeout=timeout) for check in selected])
 
     def check_health(
         self,
+        timeout: Optional[int] = None,
+        retry: int = 0,
+        services: Optional[List[str]] = None,
     ) -> None:
-        """Check the health of the deployment.
+        """Check the health of the deployment, running all checks concurrently.
 
-        This method will make a request to all the health checks and check the response status
-        concurrently.
-        If the status is not in the valid statuses, an error will be raised.
+        Parameters
+        ----------
+        timeout : Optional[int]
+            Override the seconds slept between retries for every check.
+        retry : int
+            The number of retries already considered done, for every check.
+        services : Optional[List[str]]
+            Only run checks for these services. If None, all checks run.
         """
-        return unkoil(self.acheck_health)
+        return unkoil(self.acheck_health, timeout=timeout, retry=retry, services=services)
 
     def create_watcher(
         self,
@@ -674,6 +873,17 @@ class Deployment(KoiledModel):
         detach: bool = True,
         down_on_exit: Optional[bool] = None,
         stop_on_exit: Optional[bool] = None,
+        services: Union[List[str], str, None] = None,
+        build: bool = False,
+        wait: bool = False,
+        wait_timeout: Optional[int] = None,
+        force_recreate: bool = False,
+        no_recreate: bool = False,
+        no_build: bool = False,
+        remove_orphans: bool = False,
+        renew_anon_volumes: bool = False,
+        pull: Optional[Literal["always", "missing", "never"]] = None,
+        scales: Optional[Dict[str, int]] = None,
     ) -> LogRoll:
         """Up the deployment.
 
@@ -693,10 +903,28 @@ class Deployment(KoiledModel):
             Local override: ``True`` registers a ``stop`` (containers stopped but
             not removed) on exit. ``None`` (the default) follows the ``policy``.
             Mutually exclusive with ``down_on_exit`` (down already stops them).
+        services : Union[List[str], str, None], optional
+            Only bring up these services (and their dependencies). None starts
+            everything.
+        build : bool, optional
+            Build images before starting.
+        wait : bool, optional
+            Block until services are running *and* healthy according to the
+            healthchecks declared in the compose file. This is compose's own
+            readiness mechanism and is usually the most accurate one available,
+            since it uses the service author's definition of ready.
+        wait_timeout : Optional[int], optional
+            Maximum seconds to wait when ``wait`` is set.
+        force_recreate, no_recreate, no_build, remove_orphans, renew_anon_volumes : bool, optional
+            Passed through to ``docker compose up``.
+        pull : Optional[str], optional
+            One of ``"always"``, ``"missing"``, ``"never"``.
+        scales : Optional[Dict[str, int]], optional
+            Number of containers to run per service, e.g. ``{"worker": 3}``.
 
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the up command.
         """
         action = self._resolve_exit_action(down_on_exit, stop_on_exit)
@@ -704,14 +932,35 @@ class Deployment(KoiledModel):
         cli = await self.aretrieve_cli()
         await self.project.abefore_up()
         logs = LogRoll()
-        async for log in cli.astream_up(detach=detach):
-            logs.append(log)
-            self.logger.on_up(log)
 
+        # Register the teardown *before* streaming: `up` can fail part-way with
+        # containers already created, and a teardown registered only on success
+        # would leak that partial stack. The cost is that an `up` which fails
+        # before creating anything still registers a teardown, which is harmless
+        # -- a stop/down against an empty project exits cleanly.
         if action == "down":
             self._register_cleanup(self.adown, key="down")
         elif action == "stop":
             self._register_cleanup(self.astop, key="stop")
+
+        async for log in cli.astream_up(
+            detach=detach,
+            services=services,
+            build=build,
+            wait=wait,
+            wait_timeout=wait_timeout,
+            force_recreate=force_recreate,
+            no_recreate=no_recreate,
+            no_build=no_build,
+            remove_orphans=remove_orphans,
+            renew_anon_volumes=renew_anon_volumes,
+            pull=pull,
+            scales=scales or {},
+        ):
+            logs.append(log)
+            self.logger.on_up(log)
+
+        self.up_logs = [text for _, text in logs]
 
         return logs
 
@@ -720,6 +969,17 @@ class Deployment(KoiledModel):
         detach: bool = True,
         down_on_exit: Optional[bool] = None,
         stop_on_exit: Optional[bool] = None,
+        services: Union[List[str], str, None] = None,
+        build: bool = False,
+        wait: bool = False,
+        wait_timeout: Optional[int] = None,
+        force_recreate: bool = False,
+        no_recreate: bool = False,
+        no_build: bool = False,
+        remove_orphans: bool = False,
+        renew_anon_volumes: bool = False,
+        pull: Optional[Literal["always", "missing", "never"]] = None,
+        scales: Optional[Dict[str, int]] = None,
     ) -> LogRoll:
         """Up the deployment.
 
@@ -740,11 +1000,27 @@ class Deployment(KoiledModel):
 
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the up command.
         """
 
-        return unkoil(self.aup, detach=detach, down_on_exit=down_on_exit, stop_on_exit=stop_on_exit)
+        return unkoil(
+            self.aup,
+            detach=detach,
+            down_on_exit=down_on_exit,
+            stop_on_exit=stop_on_exit,
+            services=services,
+            build=build,
+            wait=wait,
+            wait_timeout=wait_timeout,
+            force_recreate=force_recreate,
+            no_recreate=no_recreate,
+            no_build=no_build,
+            remove_orphans=remove_orphans,
+            renew_anon_volumes=renew_anon_volumes,
+            pull=pull,
+            scales=scales,
+        )
 
     async def arestart(
         self,
@@ -782,7 +1058,17 @@ class Deployment(KoiledModel):
 
         if await_health:
             await asyncio.sleep(await_health_timeout)
-            await self.acheck_health(services=services)
+            # Only wait on services that actually have a check. Restarting is not
+            # itself a request to assert health, so an uncovered service is worth
+            # a warning but not a failure -- unlike an explicit `check_health`,
+            # where naming an uncovered service is a mistake worth raising on.
+            covered = {check.service for check in self.health_checks}
+            uncovered = [s for s in services if s not in covered]
+            if uncovered:
+                logger.warning("restart(await_health=True): no health check is registered for %s, so their readiness was not verified.", ", ".join(uncovered))
+            to_check = [s for s in services if s in covered]
+            if to_check:
+                await self.acheck_health(services=to_check)
 
         return logs
 
@@ -809,7 +1095,7 @@ class Deployment(KoiledModel):
 
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the restart command.
         """
         return unkoil(
@@ -819,14 +1105,32 @@ class Deployment(KoiledModel):
             await_health_timeout=await_health_timeout,
         )
 
-    async def apull(self) -> LogRoll:
+    async def apull(
+        self,
+        services: Union[List[str], str, None] = None,
+        ignore_pull_failures: bool = False,
+        include_deps: bool = False,
+        quiet: bool = False,
+    ) -> LogRoll:
         """Pull the deployment.
 
         Will call docker-compose pull on the deployment.
 
+        Parameters
+        ----------
+        services : Union[List[str], str, None], optional
+            Only pull these services. None pulls everything.
+        ignore_pull_failures : bool, optional
+            Keep going when an image cannot be pulled -- useful for stacks that
+            mix registry images with locally built ones.
+        include_deps : bool, optional
+            Also pull the dependencies of the named services.
+        quiet : bool, optional
+            Suppress pull progress output.
+
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the pull command.
 
         Raises
@@ -838,25 +1142,237 @@ class Deployment(KoiledModel):
         await self.project.abefore_pull()
 
         logs = LogRoll()
-        async for log in cli.astream_pull():
+        async for log in cli.astream_pull(
+            services=services,
+            ignore_pull_failures=ignore_pull_failures,
+            include_deps=include_deps,
+            quiet=quiet,
+        ):
             logs.append(log)
+            self.logger.on_pull(log)
+
+        self.pull_logs = [text for _, text in logs]
 
         return logs
 
-    def pull(self) -> LogRoll:
+    def pull(
+        self,
+        services: Union[List[str], str, None] = None,
+        ignore_pull_failures: bool = False,
+        include_deps: bool = False,
+        quiet: bool = False,
+    ) -> LogRoll:
         """Pull the deployment.
 
-        Will call docker-compose pull on the deployment.
+        Will call docker-compose pull on the deployment. See ``apull``.
+
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the pull command.
         Raises
         ------
         NotInitializedError
             If the deployment has not been initialized.
         """
-        return unkoil(self.apull)
+        return unkoil(
+            self.apull,
+            services=services,
+            ignore_pull_failures=ignore_pull_failures,
+            include_deps=include_deps,
+            quiet=quiet,
+        )
+
+    async def aexec(
+        self,
+        service: str,
+        command: Union[List[str], str],
+        raise_on_error: bool = True,
+        expected_exit_code: int = 0,
+        env: Optional[Dict[str, str]] = None,
+        workdir: Optional[str] = None,
+        user: Optional[str] = None,
+        privileged: bool = False,
+        index: Optional[int] = None,
+    ) -> LogRoll:
+        """Run a command inside an already-running container.
+
+        The counterpart to ``arun``: ``run`` creates a fresh throwaway container,
+        ``exec`` acts on the container that is already up. Use this whenever the
+        command must see the live service -- querying the running database,
+        reading a file the service wrote, checking readiness.
+
+        Exit-code handling matches ``arun``: the code lands on
+        ``LogRoll.returncode``, and a mismatch with ``expected_exit_code`` raises
+        a ``CommandError`` carrying stdout and stderr separately.
+
+        Returns
+        -------
+        LogRoll
+            The logs of the command, with ``returncode`` set.
+        """
+        cli = await self.aretrieve_cli()
+        return await self._acollect_command(
+            cli.astream_exec(
+                service=service,
+                command=command,
+                env=env,
+                workdir=workdir,
+                user=user,
+                privileged=privileged,
+                index=index,
+            ),
+            what=f"Command in service `{service}`",
+            raise_on_error=raise_on_error,
+            expected_exit_code=expected_exit_code,
+            command=command,
+        )
+
+    def exec(
+        self,
+        service: str,
+        command: Union[List[str], str],
+        raise_on_error: bool = True,
+        expected_exit_code: int = 0,
+        env: Optional[Dict[str, str]] = None,
+        workdir: Optional[str] = None,
+        user: Optional[str] = None,
+        privileged: bool = False,
+        index: Optional[int] = None,
+    ) -> LogRoll:
+        """Run a command inside an already-running container. See ``aexec``."""
+        return unkoil(
+            self.aexec,
+            service,
+            command,
+            raise_on_error=raise_on_error,
+            expected_exit_code=expected_exit_code,
+            env=env,
+            workdir=workdir,
+            user=user,
+            privileged=privileged,
+            index=index,
+        )
+
+    async def alogs(
+        self,
+        services: Union[List[str], str, None] = None,
+        tail: Optional[int] = None,
+        timestamps: bool = False,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+    ) -> LogRoll:
+        """Fetch the current logs of the deployment (one shot, no following).
+
+        The simple counterpart to ``create_watcher``: that streams logs in the
+        background while you act, this just returns what has been logged so far
+        -- which is what you usually want when a test has already failed.
+
+        Returns
+        -------
+        LogRoll
+            The captured log lines, tagged by stream.
+        """
+        cli = await self.aretrieve_cli()
+        logs = LogRoll()
+        async for log in cli.astream_docker_logs(
+            services=services or [],
+            tail=str(tail) if tail else None,
+            follow=False,
+            timestamps=timestamps,
+            since=since,
+            until=until,
+        ):
+            logs.append(log)
+            self.logger.on_logs(log)
+        return logs
+
+    def logs(
+        self,
+        services: Union[List[str], str, None] = None,
+        tail: Optional[int] = None,
+        timestamps: bool = False,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+    ) -> LogRoll:
+        """Fetch the current logs of the deployment. See ``alogs``."""
+        return unkoil(self.alogs, services=services, tail=tail, timestamps=timestamps, since=since, until=until)
+
+    async def abuild(
+        self,
+        services: Union[List[str], str, None] = None,
+        no_cache: bool = False,
+        pull: bool = False,
+        quiet: bool = False,
+        build_args: Optional[Dict[str, str]] = None,
+    ) -> LogRoll:
+        """Build the deployment's images.
+
+        Returns
+        -------
+        LogRoll
+            The logs of the build command.
+        """
+        cli = await self.aretrieve_cli()
+        logs = LogRoll()
+        async for log in cli.astream_build(services=services, no_cache=no_cache, pull=pull, quiet=quiet, build_args=build_args):
+            logs.append(log)
+            self.logger.on_up(log)
+        return logs
+
+    def build(
+        self,
+        services: Union[List[str], str, None] = None,
+        no_cache: bool = False,
+        pull: bool = False,
+        quiet: bool = False,
+        build_args: Optional[Dict[str, str]] = None,
+    ) -> LogRoll:
+        """Build the deployment's images. See ``abuild``."""
+        return unkoil(self.abuild, services=services, no_cache=no_cache, pull=pull, quiet=quiet, build_args=build_args)
+
+    async def akill(self, services: Union[List[str], str, None] = None, signal: Optional[str] = None) -> LogRoll:
+        """Kill the deployment's containers without waiting out a grace period.
+
+        Unlike ``astop``, this does not send SIGTERM and wait -- useful for
+        services that ignore it.
+
+        Returns
+        -------
+        LogRoll
+            The logs of the kill command.
+        """
+        cli = await self.aretrieve_cli()
+        logs = LogRoll()
+        async for log in cli.astream_kill(services=services, signal=signal):
+            logs.append(log)
+            self.logger.on_stop(log)
+        return logs
+
+    def kill(self, services: Union[List[str], str, None] = None, signal: Optional[str] = None) -> LogRoll:
+        """Kill the deployment's containers. See ``akill``."""
+        return unkoil(self.akill, services=services, signal=signal)
+
+    async def acp(self, source: str, destination: str) -> LogRoll:
+        """Copy files between the host and a service's container.
+
+        Container paths are written ``service:/path/in/container``; plain paths
+        refer to the host. Works in either direction.
+
+        Returns
+        -------
+        LogRoll
+            The logs of the cp command.
+        """
+        cli = await self.aretrieve_cli()
+        logs = LogRoll()
+        async for log in cli.astream_cp(source, destination):
+            logs.append(log)
+        return logs
+
+    def cp(self, source: str, destination: str) -> LogRoll:
+        """Copy files between the host and a service's container. See ``acp``."""
+        return unkoil(self.acp, source, destination)
 
     async def adown(
         self,
@@ -882,7 +1398,7 @@ class Deployment(KoiledModel):
 
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the down command.
         """
         cli = await self.aretrieve_cli()
@@ -918,7 +1434,7 @@ class Deployment(KoiledModel):
 
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the down command.
         """
         return unkoil(self.aremove)
@@ -947,7 +1463,7 @@ class Deployment(KoiledModel):
 
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the down command.
         """
         return unkoil(self.adown, timeout=timeout, volumes=volumes, remove_orphans=remove_orphans)
@@ -967,7 +1483,7 @@ class Deployment(KoiledModel):
 
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the stop command.
         """
         cli = await self.aretrieve_cli()
@@ -979,6 +1495,8 @@ class Deployment(KoiledModel):
         async for log in cli.astream_stop(timeout=timeout):
             logs.append(log)
             self.logger.on_stop(log)
+
+        self.stop_logs = [text for _, text in logs]
 
         return logs
 
@@ -997,7 +1515,7 @@ class Deployment(KoiledModel):
 
         Returns
         -------
-        List[str]
+        LogRoll
             The logs of the stop command.
         """
         return unkoil(self.astop, timeout=timeout)

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Union
+from typing import List, Optional, Union, cast
 from pathlib import Path
 from dokker.cli import CLI
 import logging
@@ -18,9 +18,7 @@ class LocalProject(BaseModel):
     interfering with the docker project on tear-down.
     """
 
-    compose_files: List[ValidPath] = Field(
-        default_factory=lambda: ["docker-compose.yml"]
-    )
+    compose_files: List[ValidPath] = Field(default_factory=lambda: cast(List[ValidPath], ["docker-compose.yml"]))
     project_name: Optional[str] = None
 
     async def ainititialize(self) -> CLI:

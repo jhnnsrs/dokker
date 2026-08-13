@@ -12,6 +12,12 @@ dependencies = [
     "pydantic>2",
 ]
 
+# Registers dokker's fixtures and --dokker-* flags with pytest on install.
+# The plugin imports pytest lazily enough that it is harmless when pytest is
+# absent; pytest simply never loads it.
+[project.entry-points.pytest11]
+dokker = "dokker.pytest_plugin"
+
 
 [tool.uv]
 dev-dependencies =  [
@@ -21,6 +27,9 @@ dev-dependencies =  [
     "cookiecutter>=2.5.0,<3",
     "python-semantic-release>=9.21.1",
     "pytest-cov>=6.2.1",
+    # Used by the integration tests; previously only present transitively.
+    "requests>=2.31",
+    "mypy>=1.11",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -73,12 +82,12 @@ extend-ignore = ["ANN002", "ANN003", "D100", "ANN401"]
 
 [[tool.pydoc-markdown.loaders]]
 type = "python"
-search_path = ["rath"]
+search_path = ["dokker"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 markers = [
-    "integration: marks tests that require a running server",
+    "integration: marks tests that require a running docker daemon",
     "public: marks tests that require a public api",
 ]
 

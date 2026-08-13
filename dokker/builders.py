@@ -1,17 +1,14 @@
 import uuid
-from .deployment import Deployment, HealthCheck, PolicyName
-from typing import List, Optional, TYPE_CHECKING, Union
+from .checks import Check
+from .deployment import Deployment, PolicyName
+from typing import List, Optional, Union
 from dokker.projects.copy import CopyPathProject
 from dokker.projects.local import LocalProject
 from dokker.types import ValidPath
 
-if TYPE_CHECKING:
-    pass
-
-
 def mirror(
     local_path: ValidPath,
-    health_checks: Optional[List[HealthCheck]] = None,
+    health_checks: Optional[List[Check]] = None,
     project_name: Optional[str] = None,
     policy: PolicyName = "testing",
 ) -> Deployment:
@@ -30,7 +27,7 @@ def mirror(
     ----------
     local_path : ValidPath
         The path to the project (will be copyied and on tear down deleted)
-    health_checks : Optional[List[HealthCheck]], optional
+    health_checks : Optional[List[Check]], optional
         A list of health checks, by default None
     project_name : Optional[str], optional
         Optional Compose project name (``-p``); set a unique value to isolate this
@@ -60,7 +57,7 @@ def mirror(
 
 def local(
     docker_compose_file: Union[ValidPath, List[ValidPath]],
-    health_checks: Optional[List[HealthCheck]] = None,
+    health_checks: Optional[List[Check]] = None,
     shutdown_timeout: Optional[int] = 4,
     project_name: Optional[str] = None,
     policy: PolicyName = "local",
@@ -109,7 +106,7 @@ def local(
 
 def monitoring(
     docker_compose_file: Union[ValidPath, List[ValidPath]],
-    health_checks: Optional[List[HealthCheck]] = None,
+    health_checks: Optional[List[Check]] = None,
     project_name: Optional[str] = None,
     policy: PolicyName = "monitoring",
 ) -> Deployment:
@@ -125,7 +122,7 @@ def monitoring(
     ----------
     docker_compose_file : Union[ValidPath, List[ValidPath]]
         The docker-compose file to run.
-    health_checks : Optional[List[HealthCheck]], optional
+    health_checks : Optional[List[Check]], optional
         The health checks to run, by default None
     project_name : Optional[str], optional
         Optional Compose project name (``-p``); set a unique value to isolate this
@@ -158,7 +155,7 @@ def monitoring(
 
 def testing(
     docker_compose_file: Union[ValidPath, List[ValidPath]],
-    health_checks: Optional[List[HealthCheck]] = None,
+    health_checks: Optional[List[Check]] = None,
     shutdown_timeout: Optional[int] = 4,
     teardown_timeout: Optional[float] = 10.0,
     project_name: Optional[str] = None,
@@ -179,7 +176,7 @@ def testing(
     ----------
     docker_compose_file : Union[ValidPath, List[ValidPath]]
         The docker-compose file to run.
-    health_checks : Optional[List[HealthCheck]], optional
+    health_checks : Optional[List[Check]], optional
         The health checks to run, by default None
     shutdown_timeout : Optional[int], optional
         Grace period in seconds (docker's `-t`) passed to ``stop``/``down`` on
@@ -187,7 +184,7 @@ def testing(
         teardown does not wait the full default grace period. None uses docker's
         default (10s).
     teardown_timeout : Optional[float], optional
-        Overall wall-clock guard in seconds for the on-exit teardown, 60s by
+        Overall wall-clock guard in seconds for the on-exit teardown, 10s by
         default, so a stuck ``docker compose down`` cannot block the test session
         forever. Pass None to disable.
     project_name : Optional[str], optional
@@ -230,3 +227,11 @@ def testing(
     deployment.remove_volumes_on_down = remove_volumes
 
     return deployment
+
+
+# Its name starts with "test", so pytest would otherwise try to *collect* this
+# builder as a test case in any module that imports it -- reporting a confusing
+# "fixture 'docker_compose_file' not found" error for a function that is not a
+# test at all. Importing `testing` into a test module is the documented usage,
+# so opt it out of collection.
+testing.__test__ = False  # type: ignore[attr-defined]

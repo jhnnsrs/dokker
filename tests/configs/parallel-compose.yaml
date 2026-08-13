@@ -1,0 +1,10 @@
+# A stack that publishes its port ephemerally: no host port is declared, so
+# docker assigns a free one at runtime. This is what lets several copies of the
+# same stack run at once -- the point being tested in test_parallel_integration.
+services:
+  echo:
+    image: hashicorp/http-echo:latest
+    command: ["-text", "hello from dokker"]
+    ports:
+      # Container port only. Docker picks the host port.
+      - "5678"

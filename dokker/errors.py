@@ -6,6 +6,16 @@ class NotInitializedError(DokkerError):
     """Raised when Dokker is not initialized."""
 
 
+class DockerNotAvailableError(DokkerError):
+    """Raised when the docker CLI is missing or its daemon is unreachable.
+
+    This is the preflight failure: it is raised *before* a compose command runs,
+    so the two most common first-run problems (docker not installed, daemon not
+    started) are named instead of surfacing as an exit code 127 or a raw stderr
+    blob from the shell.
+    """
+
+
 class NotInspectedError(DokkerError):
     """Raised when an object is not inspected."""
 
@@ -16,6 +26,10 @@ class NotInspectableError(DokkerError):
 
 class HealthCheckError(DokkerError):
     """Raised when a health check fails."""
+
+
+class LogWatcherTimeoutError(DokkerError):
+    """Raised when a log watcher waits for a log line that never arrives."""
 
 
 class TearDownError(DokkerError):

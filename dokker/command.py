@@ -1,14 +1,86 @@
 import asyncio
 import os
+import shlex
+import shutil
 import signal
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 from dokker.types import LogStream
-from dokker.errors import DokkerError
+from dokker.errors import DockerNotAvailableError, DokkerError
 
 # Safety net for reaping a subprocess we have asked to die. After killing the
 # process group `proc.wait()` should resolve almost immediately; this bounds it
 # so a teardown can never block forever if the process is not reaped.
 KILL_TIMEOUT = 5.0
+
+# How long to wait for `docker version` when checking that the daemon is alive.
+PREFLIGHT_TIMEOUT = 20.0
+
+# Cached preflight result. Checking costs a subprocess round-trip, and the
+# answer does not change within a test session.
+_docker_available: Optional[bool] = None
+
+
+async def acheck_docker_available(client_call: Optional[List[str]] = None) -> None:
+    """Verify that the docker CLI exists and its daemon is reachable.
+
+    Without this, the two most likely first failures of any dokker run -- docker
+    not installed, or the daemon not running -- surface as a shell exit code 127
+    or an unlabelled stderr blob wrapped in a generic ``CommandError``. Raising
+    early says which of the two it is.
+
+    The result is cached for the process, so this is cheap to call on every
+    command.
+
+    Raises
+    ------
+    DockerNotAvailableError
+        If the docker binary is missing, the daemon is unreachable, or the
+        version probe times out.
+    """
+    global _docker_available
+    if _docker_available:
+        return
+
+    binary = (client_call or ["docker"])[0]
+    if shutil.which(binary) is None:
+        raise DockerNotAvailableError(f"The `{binary}` executable was not found on your PATH. Install Docker (https://docs.docker.com/get-docker/) and make sure `{binary}` is runnable.")
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            binary,
+            "version",
+            "--format",
+            "{{.Server.Version}}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as e:
+        raise DockerNotAvailableError(f"Could not execute `{binary}`: {e}") from e
+
+    try:
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=PREFLIGHT_TIMEOUT)
+    except asyncio.TimeoutError:
+        _kill_process_group(proc)
+        raise DockerNotAvailableError(f"`{binary} version` did not respond within {PREFLIGHT_TIMEOUT}s. The Docker daemon appears to be unresponsive.") from None
+
+    if proc.returncode != 0:
+        detail = stderr.decode("utf-8", errors="replace").strip()
+        raise DockerNotAvailableError(f"The `{binary}` CLI is installed but the Docker daemon is not reachable. Start Docker and try again.\n\n{detail}" if detail else f"The `{binary}` CLI is installed but the Docker daemon is not reachable. Start Docker and try again.")
+
+    _docker_available = True
+
+
+async def ais_docker_available(client_call: Optional[List[str]] = None) -> bool:
+    """Return whether docker is installed and its daemon reachable.
+
+    The non-raising counterpart of :func:`acheck_docker_available`, for callers
+    that want to skip rather than fail (e.g. the pytest plugin).
+    """
+    try:
+        await acheck_docker_available(client_call)
+    except DockerNotAvailableError:
+        return False
+    return True
 
 
 class CommandError(DokkerError):
@@ -96,31 +168,49 @@ async def _aread_stream(
     await queue.put(None)
 
 
-async def astream_command(command: List[str]) -> LogStream:
+async def astream_command(command: List[str], env: Optional[Dict[str, str]] = None) -> LogStream:
     """Asynchronously stream the output of a command.
+
+    The command is executed directly, not through a shell. Joining an argument
+    vector into a shell string is lossy in both directions: a compose file path
+    containing a space would split into two arguments, and a command already
+    tokenized by `shlex.split` would be re-split differently by the shell, so
+    `sh -c 'echo boom >&2'` would arrive at the container as three unrelated
+    words. Passing argv straight through is the only form that survives both.
 
     Parameters
     ----------
     command : List[str]
-        The command to run as a list of strings.
+        The command to run, as an argument vector.
+    env : Optional[Dict[str, str]]
+        Extra environment variables for the subprocess, merged over the parent
+        environment. None inherits the parent environment unchanged.
     """
-    # Create the subprocess using asyncio's subprocess
-
     # Convert command items to strings
     str_command = [str(c) for c in command]
-    full_cmd = " ".join(str_command)
+    # For display only -- error messages quote this so it can be pasted back
+    # into a shell, but it is never what we execute.
+    full_cmd = shlex.join(str_command)
+
+    if not str_command:
+        raise CommandError("Cannot run an empty command.")
+
+    subprocess_env = {**os.environ, **env} if env else None
 
     try:
-        proc = await asyncio.create_subprocess_shell(
-            full_cmd,
+        proc = await asyncio.create_subprocess_exec(
+            *str_command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=subprocess_env,
             # Run in its own session/process group so a follow-stream and any
             # children it spawns can be torn down as a group on cancellation.
             start_new_session=True,
         )
+    except FileNotFoundError as e:
+        raise CommandError(f"Failed to start command `{full_cmd}`: {str_command[0]!r} was not found on PATH.") from e
     except Exception as e:
-        raise CommandError(f"Failed to start command {command}: {e}")
+        raise CommandError(f"Failed to start command `{full_cmd}`: {e}") from e
 
     # Use a queue to stream both stdout and stderr sequentially
     queue: asyncio.Queue[Union[tuple[str, str], None]] = asyncio.Queue()

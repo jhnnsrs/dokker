@@ -3,7 +3,12 @@ import os
 from typing import Optional
 import shutil
 from dokker.cli import CLI
+from dokker.projects.errors import ProjectError
 from dokker.types import ValidPath
+
+# Compose accepts either spelling, so a mirrored project may legitimately use
+# either. Checking only one of them rejects valid projects.
+COMPOSE_FILE_NAMES = ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml")
 
 
 class CopyPathProject(BaseModel):
@@ -27,24 +32,26 @@ class CopyPathProject(BaseModel):
         CLI
             The CLI to use for the project.
         """
+        if not os.path.isdir(self.project_path):
+            raise ProjectError(f"Cannot mirror `{self.project_path}`: no such directory (resolved relative to {os.getcwd()}).")
+
         os.makedirs(self.base_dir, exist_ok=True)
 
         if self.project_name is None:
-            self.project_name = os.path.basename(self.project_path)
+            self.project_name = os.path.basename(os.path.normpath(str(self.project_path)))
 
         project_dir = os.path.join(self.base_dir, self.project_name)
         if os.path.exists(project_dir) and not self.overwrite:
-            raise Exception(
-                f"Project {self.project_name} already exists in {self.base_dir}. Set overwrite to overwrite."
-            )
+            raise ProjectError(f"Project `{self.project_name}` already exists in {self.base_dir}. Pass overwrite=True to replace it, or choose a different project_name.")
 
         shutil.copytree(self.project_path, project_dir, dirs_exist_ok=self.overwrite)
 
-        compose_file = os.path.join(project_dir, "docker-compose.yml")
-        if not os.path.exists(compose_file):
-            raise Exception(
-                "No docker-compose.yml found in the template. It appears that the template is not a valid dokker template."
-            )
+        compose_file = next(
+            (os.path.join(project_dir, name) for name in COMPOSE_FILE_NAMES if os.path.exists(os.path.join(project_dir, name))),
+            None,
+        )
+        if compose_file is None:
+            raise ProjectError(f"No compose file found in `{self.project_path}`. Expected one of: {', '.join(COMPOSE_FILE_NAMES)}.")
 
         return CLI(
             compose_files=[compose_file],
@@ -67,7 +74,7 @@ class CopyPathProject(BaseModel):
         """
 
         if self.project_name is None:
-            self.project_name = os.path.basename(self.project_path)
+            self.project_name = os.path.basename(os.path.normpath(str(self.project_path)))
 
         project_dir = os.path.join(self.base_dir, self.project_name)
         if os.path.exists(project_dir):

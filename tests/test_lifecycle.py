@@ -17,6 +17,7 @@ Real up/down, volume removal and ``mirror`` temp dirs are covered by the
 """
 
 import asyncio
+import io
 import logging
 
 import pytest
@@ -24,6 +25,7 @@ import pytest
 from dokker import CommandError, Deployment
 from dokker.compose_spec import ComposeSpec
 from dokker.errors import NotInitializedError, TearDownError
+from dokker.loggers.progress import ProgressLogger
 
 
 # --------------------------------------------------------------------------- #
@@ -62,6 +64,8 @@ class RecordingCLI:
         run_returncode: int = 0,
         run_stdout=("hello world",),
         run_stderr=(),
+        up_lines=("up line",),
+        pull_lines=("pull line",),
     ) -> None:
         self.rec = rec
         self.fail_on = set(fail_on or ())
@@ -69,6 +73,10 @@ class RecordingCLI:
         self.run_returncode = run_returncode
         self.run_stdout = tuple(run_stdout)
         self.run_stderr = tuple(run_stderr)
+        # Overridable so a test can feed real `docker compose` progress output
+        # through the logger hooks.
+        self.up_lines = tuple(up_lines)
+        self.pull_lines = tuple(pull_lines)
 
     async def _maybe(self, name: str) -> None:
         sleep = self.sleep_on.get(name)
@@ -82,7 +90,8 @@ class RecordingCLI:
     async def astream_up(self, detach: bool = True, **kw):
         self.rec.add("astream_up", detach=detach)
         await self._maybe("astream_up")
-        yield ("STDOUT", "up line")
+        for line in self.up_lines:
+            yield ("STDERR", line)
         self._maybe_fail("astream_up")
 
     async def astream_down(self, remove_orphans: bool = False, remove_images=None, timeout=None, volumes: bool = False, **kw):
@@ -99,7 +108,8 @@ class RecordingCLI:
 
     async def astream_pull(self, **kw):
         self.rec.add("astream_pull")
-        yield ("STDOUT", "pull line")
+        for line in self.pull_lines:
+            yield ("STDERR", line)
 
     async def astream_restart(self, services=None, **kw):
         self.rec.add("astream_restart")
@@ -547,3 +557,135 @@ def test_sync_context_registers_and_tears_down():
     with make_deployment(rec) as d:
         d.up(down_on_exit=True)
     assert rec.count("astream_down") == 1
+
+
+# --------------------------------------------------------------------------- #
+# Progress logger
+# --------------------------------------------------------------------------- #
+UP_PROGRESS = [
+    "Network dokkerfake_default Creating",
+    "Network dokkerfake_default Created",
+    "Container dokkerfake-echo-1 Creating",
+    "Container dokkerfake-echo-1 Created",
+    "Container dokkerfake-echo-1 Starting",
+    "Container dokkerfake-echo-1 Started",
+]
+
+
+def _progress_deployment(rec: Recorder, writer, **kw):
+    """A Deployment whose logger is a ProgressLogger drawing into ``writer``.
+
+    Passing the logger to the constructor (rather than assigning it) is
+    deliberate: pydantic validates it by isinstance against the
+    ``runtime_checkable`` ``Logger`` protocol, so this also pins that
+    ``ProgressLogger`` implements every hook.
+    """
+    project = RecordingProject(rec, up_lines=UP_PROGRESS, pull_lines=["Image alpine:3.19 Pulled"])
+    logger = ProgressLogger(writer=writer, label="dokkerfake", ascii_only=True, width=200, **kw)
+    return Deployment(project=project, logger=logger), logger
+
+
+def test_progress_logger_satisfies_the_logger_protocol():
+    """A partial implementation would be rejected here."""
+    rec = Recorder()
+    deployment, logger = _progress_deployment(rec, io.StringIO())
+    assert deployment.logger is logger
+
+
+async def test_progress_logger_tracks_a_full_lifecycle():
+    rec = Recorder()
+    deployment, logger = _progress_deployment(rec, io.StringIO())
+
+    async with deployment:
+        logger.phase("pull")
+        await deployment.apull()
+        assert "[1/1]" in logger.render()
+        assert "alpine:3.19 Pulled" in logger.render()
+
+        logger.phase("up")
+        await deployment.aup(down_on_exit=False)
+
+    rendered = logger.render()
+    assert "[1/1]" in rendered
+    assert "echo Started" in rendered
+
+
+async def test_progress_logger_draws_in_place_during_up():
+    """The whole point: one line, redrawn, never scrolled."""
+    rec = Recorder()
+    buffer = io.StringIO()
+    deployment, logger = _progress_deployment(rec, buffer)
+
+    async with deployment:
+        logger.phase("up")
+        logger.start()
+        try:
+            await deployment.aup(down_on_exit=False)
+        finally:
+            logger.stop()
+
+    written = buffer.getvalue()
+    assert "\n" not in written
+    assert written.endswith("\r\x1b[K")
+
+
+async def test_unparseable_stream_lines_are_survivable():
+    """The default fake yields prose, not compose progress. It must not crash."""
+    rec = Recorder()
+    buffer = io.StringIO()
+    project = RecordingProject(rec)  # yields "up line" / "pull line"
+    logger = ProgressLogger(writer=buffer, label="x", ascii_only=True, width=200)
+    deployment = Deployment(project=project, logger=logger)
+
+    async with deployment:
+        logger.phase("up")
+        await deployment.aup(down_on_exit=False)
+
+    # Nothing recognised, so nothing counted -- and no exception.
+    assert "[" not in logger.render()
+
+
+async def test_progress_line_is_erased_when_up_fails():
+    """The failure path is what this feature exists for.
+
+    A raised `CommandError` must still leave the terminal at column 0 with the
+    line cleared, so pytest's error report is not painted over a half-written
+    status line.
+    """
+    rec = Recorder()
+    buffer = io.StringIO()
+    project = RecordingProject(rec, up_lines=UP_PROGRESS, fail_on={"astream_up"})
+    logger = ProgressLogger(writer=buffer, label="dokkerfake", ascii_only=True, width=200)
+    deployment = Deployment(project=project, logger=logger)
+
+    async with deployment:
+        logger.phase("up")
+        logger.start()
+        try:
+            with pytest.raises(CommandError):
+                await deployment.aup(down_on_exit=False)
+        finally:
+            logger.stop()
+
+    written = buffer.getvalue()
+    assert written.endswith("\r\x1b[K")
+    assert "\n" not in written
+
+
+async def test_stop_is_idempotent_after_a_failure():
+    """A second stop (e.g. from a nested finally) must not re-erase or hang."""
+    rec = Recorder()
+    buffer = io.StringIO()
+    project = RecordingProject(rec, up_lines=UP_PROGRESS, fail_on={"astream_up"})
+    logger = ProgressLogger(writer=buffer, label="dokkerfake", ascii_only=True, width=200)
+    deployment = Deployment(project=project, logger=logger)
+
+    async with deployment:
+        logger.phase("up")
+        logger.start()
+        with pytest.raises(CommandError):
+            await deployment.aup(down_on_exit=False)
+        logger.stop()
+        logger.stop()
+
+    assert buffer.getvalue().count("\r\x1b[K") == 1

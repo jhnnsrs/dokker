@@ -12,8 +12,10 @@ Its primary use case is **writing integration tests for Docker Compose stacks**,
 
 Other tools cover similar ground (e.g. [python-on-whales](https://github.com/gabrieldemarmiesse/python-on-whales), [testcontainers](https://github.com/testcontainers/testcontainers-python)). Dokker's distinguishing focus is **asynchronous interaction with a running compose project**:
 
-- **Watch logs while you act.** A `LogWatcher` collects a service's logs in the background while your code makes requests against it — so you can assert that an HTTP call actually produced the log line you expected.
+- **Watch logs while you act.** A `LogWatcher` collects a service's logs in the background while your code makes requests against it — so you can assert that an HTTP call actually produced the log line you expected, or block until it does with `await_log()`.
 - **Structured failure feedback.** When a command in a container exits non-zero, dokker raises a `CommandError` that carries the exact exit code and the container's `stdout`/`stderr` separately, so you can tell *why* it failed instead of scraping one concatenated blob.
+- **Truly parallel-safe stacks.** `get_port()` resolves the *runtime* host port, so your compose file can leave the host port to docker and several copies of the same stack can run at once without colliding.
+- **Readiness for services that don't speak HTTP.** Databases and brokers get `TcpCheck`, `CommandCheck`, `ContainerCheck` and `LogCheck` alongside the HTTP `HealthCheck` — or defer to compose itself with `up(wait=True)`.
 - **Reliable, bounded teardown.** You drive the lifecycle with explicit calls; a per-deployment **policy** (`testing`/`local`/`monitoring`/`manual`) decides what `up()` cleans up on exit (overridable per call), with grace-period and wall-clock timeouts so an unresponsive container can't hang your test session.
 - **Async core, sync surface.** Every operation has both an `await deployment.aup()` form and a blocking `deployment.up()` form (powered by [koil](https://github.com/jhnnsrs/koil)).
 
@@ -69,19 +71,83 @@ By default Docker Compose derives the **project name** from the compose file's d
 deployment = local("docker-compose.yaml", project_name="my-service")
 ```
 
-`testing(...)` is the exception: it defaults `project_name` to a unique random value (`dokker-test-<id>`) so parallel/identical test stacks never collide. Pass an explicit `project_name` to pin it. `testing` also exposes `remove_orphans` and `remove_volumes` (both `True` by default) to control what `down` cleans up on teardown.
+`testing(...)` is the exception: it defaults `project_name` to a unique random value (`dokker-test-<id>`) so parallel/identical test stacks get their own containers and networks. Pass an explicit `project_name` to pin it. `testing` also exposes `remove_orphans` and `remove_volumes` (both `True` by default) to control what `down` cleans up on teardown.
 
-### `HealthCheck`
+### Ports: `get_port()` and `get_url()`
 
-Describes how to know a service is ready — typically an HTTP URL that should return `200`, with retries and a timeout. Run them on demand via `deployment.check_health()` inside the block.
+A unique project name isolates containers and networks — but **not host ports**. Two stacks that both declare `ports: ["5678:5678"]` still fight over host port 5678. To run identical stacks in parallel, leave the host port out and let docker assign one:
 
-### `run()` and exit codes
+```yaml
+services:
+  echo:
+    image: hashicorp/http-echo
+    ports:
+      - "5678"        # container port only; docker picks the host port
+```
 
-`deployment.run(service, command)` runs a one-off command in a service (`docker compose run`) and returns a `LogRoll` with `.returncode`, `.stdout` and `.stderr`. By default a non-zero exit raises a `CommandError`; you can opt out with `raise_on_error=False`, or declare an expected failure code with `expected_exit_code=...`.
+That port is decided at runtime, so it does not appear in `docker compose config` (and therefore not in `deployment.spec`). Resolve it from the running stack instead:
+
+```python
+port = deployment.get_port("echo", 5678)              # e.g. 32768
+url  = deployment.get_url("echo", 5678, path="/health")
+```
+
+`deployment.ps()` returns the runtime state of each container — `state`, `health`, `exit_code` and published ports — which is usually what you want when something has crashed.
+
+### Readiness checks
+
+A check answers "is this service ready yet?". `deployment.check_health()` runs them all concurrently, retrying each according to its own `max_retries`/`timeout`.
+
+| Check | Ready when | Use for |
+|---|---|---|
+| `HealthCheck(url=..., service=...)` | An HTTP GET returns an expected status | Web services |
+| `TcpCheck(service=..., port=...)` | A TCP connection to the resolved host port succeeds | Anything that listens on a socket |
+| `CommandCheck(service=..., command=...)` | A command run *inside* the container exits `0` | `pg_isready`, `redis-cli ping` |
+| `ContainerCheck(service=...)` | Docker reports the container running (and `healthy`, if it declares a healthcheck) | Any service with a compose `healthcheck:` |
+| `LogCheck(service=..., pattern=...)` | A log line matches a regex | `"database system is ready to accept connections"` |
+
+`HealthCheck.timeout` is the sleep *between* retries; `request_timeout` bounds a single HTTP request.
+
+If your compose file already declares `healthcheck:` for its services, you may not need checks at all — `deployment.up(wait=True)` uses compose's own readiness mechanism:
+
+```python
+deployment.up(wait=True, wait_timeout=60)   # returns once everything is healthy
+```
+
+### `run()`, `exec()` and exit codes
+
+Both run a command in a service and return a `LogRoll` with `.returncode`, `.stdout` and `.stderr`. The difference is *where*:
+
+- **`deployment.exec(service, command)`** runs in the **already-running** container (`docker compose exec`). Use it when the command must see live state — querying the running database, reading a file the service wrote.
+- **`deployment.run(service, command)`** creates a **fresh throwaway** container (`docker compose run`). Use it for one-off jobs that don't need the running instance.
+
+For both, a non-zero exit raises a `CommandError` by default; opt out with `raise_on_error=False`, or declare an expected failure code with `expected_exit_code=...`.
+
+Commands may be given as a string or a list:
+
+```python
+deployment.exec("redis", "redis-cli ping")            # tokenized shell-style
+deployment.exec("redis", ["redis-cli", "ping"])       # already an argument vector
+deployment.run("worker", "sh -c 'echo hi; exit 1'")   # quoted script stays one argument
+```
+
+Commands are executed directly rather than through a host shell, so shell syntax must go to a shell you name yourself (`sh -c '...'`, as above). A list is passed through untouched, one element per argument — so write `["redis-cli", "ping"]`, not `["redis-cli ping"]`.
+
+### Other operations
+
+`pull()`, `build()`, `stop()`, `kill()`, `restart()`, `down()`, `logs()` (one-shot), `ps()` and `cp()` are all available, each with an `a`-prefixed async twin. `up()` forwards the compose options you'd expect: `services`, `build`, `wait`, `force_recreate`, `pull`, `scales`, `remove_orphans`.
 
 ### `LogWatcher`
 
 `deployment.create_watcher(service)` returns a context manager that streams a service's logs in the background. Inside the `with` block you interact with the service; afterwards `watcher.collected_logs` holds the captured `(source, line)` pairs. The watcher always cleans up its streaming subprocess, even if the block raises.
+
+`await_log(pattern, timeout=...)` blocks until a captured line matches — a synchronisation primitive rather than a sleep. Lines captured since the watcher was entered count, so there is no race between the event happening and the wait starting:
+
+```python
+with deployment.create_watcher("worker") as watcher:
+    trigger_the_job()
+    watcher.await_log(r"job \d+ finished", timeout=30)
+```
 
 ---
 
@@ -126,13 +192,51 @@ with deployment:
 
 ## Integration tests with pytest
 
-The `testing` builder presets the `testing` policy and sensible defaults (unique project name, bounded teardown timeouts, orphan/volume removal on `down`). In the fixture body you pull, bring the stack up, inspect, and wait for health; because the policy is `testing`, a bare `up()` registers the `down` that runs when the fixture's `with` block exits.
+Installing dokker registers a pytest plugin, so the fixtures and flags below need no `conftest.py` wiring.
+
+The `dokker_deployment` fixture is a factory: give it a compose file and your checks, and it pulls, starts, inspects and health-checks the stack, then tears it down when the session ends.
 
 ```python
 import pytest
 import requests
-from dokker import testing, HealthCheck, Deployment
+from dokker import TcpCheck, Deployment
 
+
+@pytest.fixture(scope="session")
+def stack(dokker_deployment):
+    return dokker_deployment(
+        "docker-compose.yaml",
+        health_checks=[TcpCheck(service="echo", port=5678)],
+    )
+
+
+def test_echo_responds(stack: Deployment):
+    assert requests.get(stack.get_url("echo", 5678)).status_code == 200
+```
+
+While the stack comes up you get a single self-updating status line, so a slow pull or a container stuck on its healthcheck is visible instead of looking like a hang:
+
+```
+⠹ dokker-test-a1b2c3d4 · up [1/3] · 4.2s · redis Waiting, echo Started, worker Started
+```
+
+It redraws in place and erases itself when the stack is ready, leaving your test output untouched. It is enabled only on a real terminal, so piped and CI output is unaffected — use `--dokker-progress=on` to force it, or `off` to disable it.
+
+Flags:
+
+| Flag | Effect |
+|---|---|
+| `--dokker-keep` | Leave stacks running after the session, so you can debug the containers that actually failed |
+| `--dokker-no-pull` | Skip `pull` and use local images |
+| `--dokker-log` | Print compose output while stacks start and stop (takes precedence over the progress line) |
+| `--dokker-progress` | `auto` (default, on when attached to a terminal), `on`, or `off` |
+
+Tests marked `@pytest.mark.integration` are **skipped automatically** when no docker daemon is reachable, so one `pytest` invocation is safe on CI machines without docker. A `docker_available` fixture exposes the same probe.
+
+If you prefer to drive the lifecycle yourself, the builder works directly — a bare `up()` registers the `down` that runs when the `with` block exits:
+
+```python
+from dokker import testing, HealthCheck
 
 @pytest.fixture(scope="session")
 def deployment():
@@ -142,16 +246,31 @@ def deployment():
         shutdown_timeout=1,  # SIGKILL containers that ignore SIGTERM after 1s
     ) as deployment:
         deployment.pull()
-        deployment.up()           # testing policy -> fully torn down when the fixture exits
-        deployment.inspect()      # populate deployment.spec
-        deployment.check_health() # block until echo answers 200
+        deployment.up()
+        deployment.inspect()
+        deployment.check_health()
         yield deployment
-
-
-def test_echo_responds(deployment: Deployment):
-    port = deployment.spec.services["echo"].get_port_for_internal(5678).published
-    assert requests.get(f"http://localhost:{port}").status_code == 200
 ```
+
+A hand-rolled fixture like that gets the progress line too — wrap the lifecycle in `dokker_progress` and label each step. It honours the same flags, and `phase` is always safe to call, so nothing needs guarding when progress is off:
+
+```python
+from dokker.pytest_plugin import dokker_progress
+
+@pytest.fixture(scope="session")
+def deployment(request):
+    with testing("docker-compose.yaml") as deployment:
+        with dokker_progress(request.config, deployment) as phase:
+            phase("pull")
+            deployment.pull()
+            phase("up")
+            deployment.up()
+            phase("health")
+            deployment.check_health()
+        yield deployment
+```
+
+Outside pytest entirely, `ProgressLogger` is a plain `Logger` you can attach to any deployment — `deployment.logger = ProgressLogger(label="my-stack")`, then `start()` / `phase(...)` / `stop()`.
 
 ## Running commands and asserting on exit codes
 
@@ -176,7 +295,26 @@ assert logs.returncode == 1
 
 # ...or declare that a non-zero exit is the expected outcome
 logs = deployment.run("worker", "false", expected_exit_code=1)
+
+# `exec` runs in the container that is already up, so it sees live state
+deployment.exec("redis", "redis-cli set greeting hello")
+assert "hello" in deployment.exec("redis", "redis-cli get greeting").stdout
 ```
+
+## Errors
+
+All of dokker's exceptions derive from `DokkerError`, so `except DokkerError` catches everything the library raises.
+
+| Error | Raised when |
+|---|---|
+| `DockerNotAvailableError` | The `docker` binary is missing or the daemon is unreachable — checked *before* any command runs |
+| `CommandError` | A docker command exited non-zero; carries `.returncode`, `.stdout`, `.stderr` |
+| `HealthCheckError` | A readiness check failed after its retries, or `check_health()` named a service with no check |
+| `PortNotFoundError` | A port is not published, or the container is not running |
+| `LogWatcherTimeoutError` | A watcher waited for a log line that never arrived |
+| `TearDownError` | The on-exit teardown failed or exceeded `teardown_timeout` |
+| `ServiceNotFoundError`, `LabelNotFoundError` | A service or label is absent from the compose spec |
+| `ProjectError` | A project could not be set up (e.g. `mirror` found no compose file) |
 
 ## Async usage
 
@@ -205,9 +343,12 @@ asyncio.run(main())
 This is an open-source project and contributions are welcome. The API is only partially stable, so feel free to suggest changes or improvements.
 
 ```bash
-uv sync                       # install dependencies
-uv run pytest                 # run the unit tests
-uv run pytest -m integration  # run the docker-backed integration tests
+uv sync                            # install dependencies
+uv run pytest                      # everything (integration tests skip without docker)
+uv run pytest -m "not integration" # unit tests only
+uv run pytest -m integration       # the docker-backed integration tests
+uv run ruff check dokker           # lint
+uv run mypy dokker                 # type check
 ```
 
-Integration tests require a running Docker daemon and use small public images (`hashicorp/http-echo`, `redis:7-alpine`, `alpine`) so they run anywhere.
+Integration tests require a running Docker daemon and use small public images (`hashicorp/http-echo`, `redis:7-alpine`, `alpine`) so they run anywhere. Without a daemon they skip rather than fail.

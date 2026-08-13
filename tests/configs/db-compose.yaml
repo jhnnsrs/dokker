@@ -1,0 +1,13 @@
+# A non-HTTP service with a compose-native healthcheck, used to exercise the
+# readiness strategies that the HTTP-only HealthCheck cannot express.
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      # Ephemeral, so this stack never collides with a redis on the host.
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 15

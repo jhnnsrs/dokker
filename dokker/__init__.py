@@ -19,15 +19,31 @@ from .builders import (
     monitoring,
     local,
 )
+from .checks import (
+    BaseCheck,
+    Check,
+    CheckContext,
+    CommandCheck,
+    ContainerCheck,
+    LogCheck,
+    TcpCheck,
+)
 from .project import Project
+from .projects.copy import CopyPathProject
 from .projects.local import LocalProject
 from .log_watcher import LogRoll, LogWatcher
+from .loggers.print import PrintLogger
+from .loggers.progress import ProgressLogger
+from .loggers.void import VoidLogger
 from .command import CommandError
 from .cli import CLI, CLIError
+from .compose_spec import ComposeSpec, ContainerStatus
 from .errors import (
+    DockerNotAvailableError,
     DokkerError,
     HealthCheckError,
     LabelNotFoundError,
+    LogWatcherTimeoutError,
     NotInitializedError,
     NotInspectableError,
     NotInspectedError,
@@ -35,6 +51,7 @@ from .errors import (
     ServiceNotFoundError,
     TearDownError,
 )
+from .projects.errors import ProjectError
 
 __all__ = [
     "Deployment",
@@ -49,18 +66,36 @@ __all__ = [
     "local",
     "Project",
     "LocalProject",
+    "CopyPathProject",
     "LogRoll",
     "LogWatcher",
+    "PrintLogger",
+    "ProgressLogger",
+    "VoidLogger",
     "CLI",
     "CLIError",
     "CommandError",
+    "ComposeSpec",
+    "ContainerStatus",
+    # Readiness checks
+    "Check",
+    "CheckContext",
+    "BaseCheck",
+    "TcpCheck",
+    "CommandCheck",
+    "ContainerCheck",
+    "LogCheck",
+    # Errors
+    "DockerNotAvailableError",
     "DokkerError",
     "HealthCheckError",
     "LabelNotFoundError",
+    "LogWatcherTimeoutError",
     "NotInitializedError",
     "NotInspectableError",
     "NotInspectedError",
     "PortNotFoundError",
+    "ProjectError",
     "ServiceNotFoundError",
     "TearDownError",
 ]
