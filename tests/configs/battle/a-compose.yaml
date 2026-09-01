@@ -1,0 +1,14 @@
+# Deliberately shares its directory *and* its service name with b-compose.yaml.
+#
+# Compose derives a project name from the compose file's parent directory when
+# no `--project-name` is given, so both files resolve to project `battle`. The
+# shared service name is what makes that visible: a merged project means the
+# second `up()` adopts the first's container instead of creating its own.
+# Two files with *different* service names would co-exist happily inside one
+# project and hide the merge entirely.
+services:
+  echo:
+    image: hashicorp/http-echo:latest
+    command: ["-text", "hello from stack A"]
+    ports:
+      - "5678"

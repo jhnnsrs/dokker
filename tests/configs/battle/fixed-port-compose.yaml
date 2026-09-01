@@ -1,0 +1,12 @@
+# A stack that pins a host port, so two copies of it *cannot* both run.
+#
+# The port is deliberately obscure: 5678/5679 already belong to the
+# `basic_project` fixture and to test_up_down, and a collision with those would
+# make this test fail for the wrong reason. 54321 is used by nothing else here,
+# so the only thing that can collide with this stack is another copy of itself.
+services:
+  echo:
+    image: hashicorp/http-echo:latest
+    command: ["-text", "hello from the fixed-port stack"]
+    ports:
+      - "54321:5678"

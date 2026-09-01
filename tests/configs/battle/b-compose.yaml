@@ -1,0 +1,8 @@
+# The twin of a-compose.yaml: same directory, same service name, different body.
+# See a-compose.yaml for why both properties are required.
+services:
+  echo:
+    image: hashicorp/http-echo:latest
+    command: ["-text", "hello from stack B"]
+    ports:
+      - "5678"
