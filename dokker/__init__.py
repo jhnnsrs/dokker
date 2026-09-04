@@ -36,6 +36,7 @@ from .loggers.print import PrintLogger
 from .loggers.progress import ProgressLogger
 from .loggers.void import VoidLogger
 from .command import CommandError
+from .ownership import areap_stale, reap_stale
 from .cli import CLI, CLIError
 from .compose_spec import ComposeSpec, ContainerStatus
 from .errors import (
@@ -75,6 +76,8 @@ __all__ = [
     "CLI",
     "CLIError",
     "CommandError",
+    "areap_stale",
+    "reap_stale",
     "ComposeSpec",
     "ContainerStatus",
     # Readiness checks

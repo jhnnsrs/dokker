@@ -658,6 +658,38 @@ class CLI(KoiledModel):
         except Exception as e:
             raise CLIError(f"Could not parse the output of `docker compose ps`: {result}") from e
 
+    async def areap_stale(self) -> List[str]:
+        """Remove the stacks left behind by dead dokker processes on this host.
+
+        Delegates to :func:`dokker.ownership.areap_stale` with this CLI's
+        docker invocation and environment, so a custom ``client_call`` or a
+        remote ``DOCKER_HOST`` in ``env`` is honoured.
+
+        Returns
+        -------
+        List[str]
+            The compose project names that were removed.
+        """
+        from dokker.ownership import areap_stale
+
+        return await areap_stale(client_call=list(self.client_call), env=self.env)
+
+    async def aconfig_services(self) -> List[str]:
+        """List the service names the compose files resolve to.
+
+        This is `docker compose config --services`: the merged view of all
+        compose files, honouring the active profiles. Cheaper than a full
+        `ainspect_config` when only the names are needed, e.g. to write an
+        override that must mention exactly the existing services.
+
+        Returns
+        -------
+        List[str]
+            The resolved service names, in compose's order.
+        """
+        result = await self._acollect_stdout(self.docker_cmd + ["config", "--services"])
+        return [line.strip() for line in result.splitlines() if line.strip()]
+
     async def ainspect_config(self) -> ComposeSpec:
         """Inspect the config of the docker-compose project.
 

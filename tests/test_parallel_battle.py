@@ -110,7 +110,8 @@ async def test_five_stacks_come_up_concurrently_on_distinct_ports():
 
         assert len(set(ports)) == len(ports), f"concurrent stacks shared a host port: {ports}"
 
-        bodies = await asyncio.gather(*(asyncio.to_thread(_get, await d.aget_url("echo", 5678)) for d in deployments))
+        urls = await asyncio.gather(*(d.aget_url("echo", 5678) for d in deployments))
+        bodies = await asyncio.gather(*(asyncio.to_thread(_get, url) for url in urls))
         assert all("hello from dokker" in body for body in bodies)
 
 

@@ -162,6 +162,7 @@ def testing(
     remove_orphans: bool = True,
     remove_volumes: bool = True,
     policy: PolicyName = "testing",
+    reap_stale: bool = True,
 ) -> Deployment:
     """Generates a testing deployment.
 
@@ -171,6 +172,15 @@ def testing(
     context manager call ``pull()``, ``up()``, ``inspect()`` and ``check_health()``.
     Under the default ``"testing"`` policy a bare ``up()`` brings the stack down
     (removing volumes and orphans) and tears the project down on exit.
+
+    Because that promise dies with the process (a SIGKILLed or interrupted test
+    run never reaches its teardown), ``up()`` also labels the stack with the
+    owning PID and first removes the stacks earlier, now-dead dokker processes
+    left behind on this host. Do not clean strays with a ``docker ps | grep
+    dokker-test | xargs docker rm -f`` sweep: it cannot tell a stray from a
+    stack a live run in another terminal is using, and removing that one turns
+    a green suite into hundreds of "database vanished" errors. Use
+    ``dokker.reap_stale()`` instead.
 
     Parameters
     ----------
@@ -199,6 +209,11 @@ def testing(
     policy : PolicyName, optional
         Teardown policy, ``"testing"`` by default (down + remove volumes/orphans +
         tear the project down on exit).
+    reap_stale : bool, optional
+        Remove, before ``up()``, the stacks left behind by dead dokker processes
+        on this host (see ``dokker.reap_stale``), by default True. Only stacks
+        that were themselves going to be downed on exit are candidates; kept
+        (``down_on_exit=False``) and ``local()`` stacks are never touched.
 
     Returns
     -------
@@ -221,6 +236,7 @@ def testing(
         shutdown_timeout=shutdown_timeout,
         teardown_timeout=teardown_timeout,
         policy=policy,
+        reap_stale=reap_stale,
     )
 
     deployment.remove_orphans_on_down = remove_orphans

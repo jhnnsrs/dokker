@@ -168,7 +168,7 @@ async def _aread_stream(
     await queue.put(None)
 
 
-async def astream_command(command: List[str], env: Optional[Dict[str, str]] = None) -> LogStream:
+async def astream_command(command: List[str], env: Optional[Dict[str, str]] = None, cwd: Optional[str] = None) -> LogStream:
     """Asynchronously stream the output of a command.
 
     The command is executed directly, not through a shell. Joining an argument
@@ -185,6 +185,10 @@ async def astream_command(command: List[str], env: Optional[Dict[str, str]] = No
     env : Optional[Dict[str, str]]
         Extra environment variables for the subprocess, merged over the parent
         environment. None inherits the parent environment unchanged.
+    cwd : Optional[str]
+        Working directory for the subprocess. None inherits the parent's. The
+        stale-stack reaper runs `docker compose -p <name> down` from an empty
+        directory so no compose file in the caller's cwd can be picked up.
     """
     # Convert command items to strings
     str_command = [str(c) for c in command]
@@ -203,6 +207,7 @@ async def astream_command(command: List[str], env: Optional[Dict[str, str]] = No
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=subprocess_env,
+            cwd=cwd,
             # Run in its own session/process group so a follow-stream and any
             # children it spawns can be torn down as a group on cancellation.
             start_new_session=True,

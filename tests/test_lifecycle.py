@@ -19,6 +19,7 @@ Real up/down, volume removal and ``mirror`` temp dirs are covered by the
 import asyncio
 import io
 import logging
+import os
 
 import pytest
 
@@ -77,6 +78,8 @@ class RecordingCLI:
         # through the logger hooks.
         self.up_lines = tuple(up_lines)
         self.pull_lines = tuple(pull_lines)
+        # Owner labelling appends an override file here (see ``_aensure_owner_labels``).
+        self.compose_files: list = ["docker-compose.yaml"]
 
     async def _maybe(self, name: str) -> None:
         sleep = self.sleep_on.get(name)
@@ -137,6 +140,15 @@ class RecordingCLI:
     async def ainspect_config(self) -> ComposeSpec:
         self.rec.add("ainspect_config")
         return ComposeSpec(services={})
+
+    async def aconfig_services(self) -> list[str]:
+        self.rec.add("aconfig_services")
+        self._maybe_fail("aconfig_services")
+        return ["echo", "worker"]
+
+    async def areap_stale(self) -> list[str]:
+        self.rec.add("areap_stale")
+        return []
 
 
 class RecordingProject:
@@ -232,6 +244,74 @@ async def test_up_stop_on_exit_stops_not_downs():
         await d.aup(stop_on_exit=True)
     assert rec.count("astream_stop") == 1
     assert "astream_down" not in rec.events
+
+
+# --------------------------------------------------------------------------- #
+# Owner labels / stale reaping follow the `down` promise and nothing else
+# --------------------------------------------------------------------------- #
+async def test_up_with_down_reaps_then_labels_then_downs_with_override_still_listed():
+    rec = Recorder()
+    async with make_deployment(rec) as d:
+        await d.aup(down_on_exit=True)
+        cli = d._cli
+        assert rec.events.index("areap_stale") < rec.events.index("aconfig_services") < rec.events.index("astream_up")
+        override = [f for f in cli.compose_files if str(f).endswith("dokker-owner.override.yaml")]
+        assert len(override) == 1
+        assert os.path.exists(override[0])
+        # The override stamps exactly the resolved services.
+        text = open(override[0], encoding="utf-8").read()
+        assert '"echo":' in text and '"worker":' in text
+        assert f'"dokker.owner.pid": "{os.getpid()}"' in text
+        # Register a probe *after* up so, in LIFO order, it runs before the down.
+        seen: dict = {}
+        async def probe() -> None:
+            seen["files_at_down"] = list(cli.compose_files)
+        d._register_cleanup(probe)
+    # `down` ran while the override was still part of the --file list...
+    assert any(str(f).endswith("dokker-owner.override.yaml") for f in seen["files_at_down"])
+    assert rec.count("astream_down") == 1
+    # ...and the file and its directory are gone afterwards.
+    assert not os.path.exists(override[0])
+    assert cli.compose_files == ["docker-compose.yaml"]
+
+
+async def test_up_twice_labels_once():
+    rec = Recorder()
+    async with make_deployment(rec) as d:
+        await d.aup(down_on_exit=True)
+        await d.aup(down_on_exit=True)
+        assert rec.count("aconfig_services") == 1
+        assert sum(1 for f in d._cli.compose_files if "dokker-owner" in str(f)) == 1
+
+
+async def test_up_with_stop_or_nothing_neither_reaps_nor_labels():
+    """A stack dokker will not remove is never a reaping candidate, so it gets no owner label."""
+    for kwargs in ({"stop_on_exit": True}, {}, {"down_on_exit": False}):
+        rec = Recorder()
+        async with make_deployment(rec) as d:
+            await d.aup(**kwargs)
+            assert "areap_stale" not in rec.events, kwargs
+            assert "aconfig_services" not in rec.events, kwargs
+            assert d._cli.compose_files == ["docker-compose.yaml"], kwargs
+
+
+async def test_reap_stale_false_still_labels():
+    rec = Recorder()
+    async with make_deployment(rec, reap_stale=False) as d:
+        await d.aup(down_on_exit=True)
+        assert "areap_stale" not in rec.events
+        assert rec.count("aconfig_services") == 1
+
+
+async def test_labelling_failure_only_warns_and_up_proceeds(caplog):
+    rec = Recorder()
+    with caplog.at_level(logging.WARNING, logger="dokker.deployment"):
+        async with make_deployment(rec, fail_on={"aconfig_services"}) as d:
+            await d.aup(down_on_exit=True)
+            assert d._cli.compose_files == ["docker-compose.yaml"]
+    assert rec.count("astream_up") == 1
+    assert rec.count("astream_down") == 1
+    assert "will not be reaped automatically" in caplog.text
 
 
 async def test_bare_up_registers_no_teardown():

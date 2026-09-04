@@ -73,6 +73,22 @@ deployment = local("docker-compose.yaml", project_name="my-service")
 
 `testing(...)` is the exception: it defaults `project_name` to a unique random value (`dokker-test-<id>`) so parallel/identical test stacks get their own containers and networks. Pass an explicit `project_name` to pin it. `testing` also exposes `remove_orphans` and `remove_volumes` (both `True` by default) to control what `down` cleans up on teardown.
 
+### Stray stacks: dokker cleans up after its own dead processes
+
+A `down` on exit is a promise the *process* keeps, and a SIGKILLed test run, a closed terminal or a stopped debugger never reaches it. The stack it started stays up under a `dokker-test-<id>` name nobody recognises. **Do not clean these with a name sweep** such as `docker ps -a | grep dokker-test | xargs docker rm -f`: a sweep cannot tell a stray from the stack a live run in another terminal is using right now, and killing that one turns a green suite into hundreds of "database vanished" errors with no local cause.
+
+Instead, every `up()` that registers a `down` on exit:
+
+1. labels the stack's containers with the owning process (`dokker.owner.pid`, `dokker.owner.host`, `dokker.owner.start`), and
+2. first removes the stacks whose owner is provably gone — same host, PID no longer running (or recycled) — containers, networks and volumes.
+
+The rule is that dokker reaps only what it would itself have torn down: a kept stack (`up(down_on_exit=False)`, `--dokker-keep`), a `local()` stack (policy `stop`), a stack recorded by another host, or anything not started by dokker carries no owner label and is never touched. Nor is a stack whose owner is still alive. Opt out with `testing(..., reap_stale=False)` / `Deployment(reap_stale=False)`, or clean a machine by hand with:
+
+```python
+import dokker
+dokker.reap_stale()   # -> ["dokker-test-3f9a12c0", ...]; the project names it removed
+```
+
 ### Ports: `get_port()` and `get_url()`
 
 A unique project name isolates containers and networks — but **not host ports**. Two stacks that both declare `ports: ["5678:5678"]` still fight over host port 5678. To run identical stacks in parallel, leave the host port out and let docker assign one:

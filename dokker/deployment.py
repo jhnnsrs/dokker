@@ -22,7 +22,10 @@ import ssl
 from typing import Callable
 from dokker.errors import NotInitializedError, NotInspectedError, HealthCheckError, TearDownError
 from dokker.command import CommandError
+from dokker.ownership import write_owner_override
 import logging
+import shutil
+import tempfile
 
 # Runtime (not TYPE_CHECKING) import: `Check` is used as a pydantic field
 # annotation below, so it has to be resolvable when the model is built.
@@ -224,6 +227,16 @@ class Deployment(KoiledModel):
             "containers stop faster. None (the default) disables this guard."
         ),
     )
+    reap_stale: bool = Field(
+        default=True,
+        description=(
+            "Before an `up` that registers a `down` on exit, remove the stacks left behind "
+            "by earlier dokker processes that died before keeping the same promise (a killed "
+            "test run, a closed session). Only stacks carrying dokker's owner labels whose "
+            "owning PID is gone on this host are touched; kept, stopped, foreign and live "
+            "stacks never are. See `dokker.reap_stale`."
+        ),
+    )
     threadpool_workers: int = Field(
         default=10,
         description="Deprecated and unused: nothing in dokker reads this. Health checks and the log watcher run as asyncio tasks, not on a threadpool. Kept so existing constructor calls do not break; it will be removed in a future release.",
@@ -255,6 +268,8 @@ class Deployment(KoiledModel):
     _cleanup_stack: List[Callable[[], Awaitable[Any]]] = PrivateAttr(default_factory=list)
     _registered_keys: set[str] = PrivateAttr(default_factory=set)
     _entered: bool = PrivateAttr(default=False)
+    # Directory holding the owner-label override while one is in force.
+    _owner_override_dir: Optional[str] = PrivateAttr(default=None)
 
     def _register_cleanup(self, coro_factory: Callable[[], Awaitable[Any]], key: Optional[str] = None) -> None:
         """Register an on-exit teardown.
@@ -868,6 +883,35 @@ class Deployment(KoiledModel):
             return "stop"
         return None
 
+    async def _aensure_owner_labels(self, cli: "CLI") -> None:
+        """Append an override stamping dokker's owner labels onto every service.
+
+        The override lives in its own temp directory and is registered for
+        removal *before* the ``down`` so that, in LIFO order, the ``down`` still
+        sees the complete ``--file`` list and the directory goes last. Labelling
+        is bookkeeping: if compose cannot resolve the services here, the ``up``
+        that follows will report the real error, so this only warns.
+        """
+        if self._owner_override_dir is not None:
+            return
+        try:
+            services = await cli.aconfig_services()
+        except CommandError as e:
+            logger.warning("Could not resolve the services to label this stack's owner; a stray copy of it will not be reaped automatically: %s", e)
+            return
+        directory = tempfile.mkdtemp(prefix="dokker-owner-")
+        path = write_owner_override(services, directory)
+        cli.compose_files = [*cli.compose_files, path]
+        self._owner_override_dir = directory
+        self._register_cleanup(lambda: self._aremove_owner_labels(cli, path), key="owner_override")
+
+    async def _aremove_owner_labels(self, cli: "CLI", path: str) -> None:
+        """Drop the owner override from the CLI and delete its directory."""
+        cli.compose_files = [f for f in cli.compose_files if str(f) != path]
+        directory, self._owner_override_dir = self._owner_override_dir, None
+        if directory is not None:
+            shutil.rmtree(directory, ignore_errors=True)
+
     async def aup(
         self,
         detach: bool = True,
@@ -939,6 +983,14 @@ class Deployment(KoiledModel):
         # before creating anything still registers a teardown, which is harmless
         # -- a stop/down against an empty project exits cleanly.
         if action == "down":
+            # We are promising to remove this stack. Two things follow from that
+            # promise and only from it (a kept or merely stopped stack gets
+            # neither): earlier processes that made the same promise and died
+            # before keeping it are cleaned up now, and this stack is labelled
+            # with our PID so a later process can do the same for us.
+            if self.reap_stale:
+                await cli.areap_stale()
+            await self._aensure_owner_labels(cli)
             self._register_cleanup(self.adown, key="down")
         elif action == "stop":
             self._register_cleanup(self.astop, key="stop")
