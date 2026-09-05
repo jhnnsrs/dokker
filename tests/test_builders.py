@@ -22,10 +22,14 @@ async def test_local_threads_project_name():
     assert cli.docker_cmd[cli.docker_cmd.index("--project-name") + 1] == "explicit-name"
 
 
-async def test_local_without_project_name_omits_flag():
+async def test_local_without_project_name_derives_a_stable_one():
+    # `basic-compose.yaml` is not one of compose's default file names, so the
+    # derived name is `<directory>-<stem>` (see ``derive_project_name``); two
+    # ``local()`` deployments of the same file still share it, as they should.
     deployment = local(COMPOSE_FILE)
     cli = await deployment.project.ainititialize()
-    assert "--project-name" not in cli.docker_cmd
+    assert cli.docker_cmd[cli.docker_cmd.index("--project-name") + 1] == "configs-basic-compose"
+    assert local(COMPOSE_FILE).project.project_name == deployment.project.project_name
 
 
 async def test_monitoring_threads_project_name():

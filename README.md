@@ -65,11 +65,13 @@ All builders accept a compose file path (or list of paths), an optional list of 
 
 ### Project isolation (`project_name`)
 
-By default Docker Compose derives the **project name** from the compose file's directory basename, so two deployments whose compose files live in same-named directories share a project — and one's `down()` tears down the other's containers. Every builder accepts an optional `project_name` to set Compose's `-p`/`--project-name` flag and keep deployments isolated:
+By default Docker Compose derives the **project name** from the compose file's directory basename, so two deployments whose compose files live in the same (or a same-named) directory share a project — and one's `up()` recreates the other's services while its `down()` tears down the other's containers. Every builder accepts an optional `project_name` to set Compose's `-p`/`--project-name` flag and keep deployments isolated:
 
 ```python
 deployment = local("docker-compose.yaml", project_name="my-service")
 ```
+
+`local(...)` derives a stable default when you pass none: the directory basename for the standard file names (`compose.yaml`, `docker-compose.yaml`, …) — exactly what a hand-typed `docker compose up` there would use, so existing stacks keep their names — and `<directory>-<file stem>` for any other file (`stacks/a-compose.yaml` → `stacks-a-compose`), so sibling compose files in one directory never merge. `monitoring(...)` leaves the name to compose, since it observes stacks it did not start.
 
 `testing(...)` is the exception: it defaults `project_name` to a unique random value (`dokker-test-<id>`) so parallel/identical test stacks get their own containers and networks. Pass an explicit `project_name` to pin it. `testing` also exposes `remove_orphans` and `remove_volumes` (both `True` by default) to control what `down` cleans up on teardown.
 

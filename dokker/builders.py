@@ -1,3 +1,5 @@
+import os
+import re
 import uuid
 from .checks import Check
 from .deployment import Deployment, PolicyName
@@ -5,6 +7,43 @@ from typing import List, Optional, Union
 from dokker.projects.copy import CopyPathProject
 from dokker.projects.local import LocalProject
 from dokker.types import ValidPath
+
+# The file names compose looks for on its own when given no `--file`. A local()
+# of one of these keeps compose's default project name (the directory basename),
+# so dokker and a hand-typed `docker compose up` in that directory agree on the
+# project -- and existing stacks/volumes keep their names.
+COMPOSE_DEFAULT_FILENAMES = frozenset({"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"})
+
+
+def _normalize_project_name(name: str) -> str:
+    """Coerce *name* into what compose accepts: lowercase ``[a-z0-9_-]``, starting with a letter or digit."""
+    name = re.sub(r"[^a-z0-9_-]+", "-", name.lower()).strip("-_")
+    return name or "dokker"
+
+
+def derive_project_name(compose_files: List[ValidPath]) -> str:
+    """Derive a stable compose project name for *compose_files*.
+
+    Compose's own default is the parent directory's basename, which means two
+    sibling compose files in one directory silently share a project: the second
+    ``up()`` recreates the first's services instead of adding its own. For the
+    default file names (``compose.yaml``, ``docker-compose.yaml``, ...) that
+    convention is kept, because it is the name a hand-typed ``docker compose up``
+    in the same directory would use and existing stacks depend on it. Any other
+    file gets ``<directory>-<file stem>`` (e.g. ``battle-a-compose``), so
+    siblings stay apart while the name remains deterministic across sessions --
+    a ``local()`` stack must find its own stopped containers again next time.
+
+    Like compose, the first file decides.
+    """
+    first = os.path.abspath(str(compose_files[0]))
+    directory = os.path.basename(os.path.dirname(first)) or "root"
+    filename = os.path.basename(first)
+    if filename in COMPOSE_DEFAULT_FILENAMES:
+        return _normalize_project_name(directory)
+    stem = filename.rsplit(".", 1)[0]
+    return _normalize_project_name(f"{directory}-{stem}")
+
 
 def mirror(
     local_path: ValidPath,
@@ -73,9 +112,12 @@ def local(
     Parameters
     ----------
     project_name : Optional[str], optional
-        Optional Compose project name (``-p``); set a unique value to isolate this
-        deployment from sibling stacks sharing the same compose directory. By default
-        Compose derives it from the compose file's directory basename.
+        Compose project name (``-p``). Defaults to ``derive_project_name``: the
+        compose file's directory basename for the standard file names
+        (``compose.yaml``, ``docker-compose.yaml``, ...), exactly as compose
+        itself would pick, and ``<directory>-<file stem>`` for any other file so
+        that sibling compose files in one directory do not merge into a single
+        project. Deterministic, so the stack is found again next session.
     policy : PolicyName, optional
         Teardown policy, ``"local"`` by default (stop on exit, keep containers and
         volumes). Override per-deployment, or per call via ``up(down_on_exit=...)``.
@@ -85,6 +127,9 @@ def local(
 
     if health_checks is None:
         health_checks = []
+
+    if project_name is None:
+        project_name = derive_project_name(docker_compose_file)
 
     project = LocalProject(
         compose_files=docker_compose_file,
