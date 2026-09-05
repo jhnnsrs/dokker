@@ -1,6 +1,61 @@
 # CHANGELOG
 
 
+## v2.8.0 (2026-09-05)
+
+### Bug Fixes
+
+- Give local() a stable project name so sibling compose files do not merge
+  ([`c4ff9b4`](https://github.com/jhnnsrs/dokker/commit/c4ff9b44fd1bcadfe57c1b71d3a0b74b7665a6ea))
+
+`local()` left `--project-name` unset, so compose fell back to the compose file's directory basename
+  and two sibling files in one directory became a single project: the second `up()` recreated the
+  first's services and both deployments pointed at one container (the `battle` test committed red on
+  2026-09-01, which has blocked every release since).
+
+`derive_project_name()` keeps compose's own convention for the standard file names (`compose.yaml`,
+  `docker-compose.yaml`, ...), so a hand-typed `docker compose up` and dokker still agree and
+  existing stacks keep their names; any other file gets `<directory>-<stem>`. Deterministic, so a
+  `local()` stack finds its own stopped containers again next session. `monitoring()` is unchanged:
+  it observes stacks it did not start.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01UyygY5tfNueycZRm9y7ZWP
+
+### Chores
+
+- With some more parllel integration tests
+  ([`1169bf0`](https://github.com/jhnnsrs/dokker/commit/1169bf02eddee90592aec945ffca0f7ecbd2becd))
+
+### Features
+
+- Label testing stacks with their owner and reap the ones whose owner died
+  ([`c23c959`](https://github.com/jhnnsrs/dokker/commit/c23c959a7f596958c34511c6df325072a6dbecf1))
+
+A `testing()` deployment promises to `down` its stack on exit, but a SIGKILLed or interrupted run
+  never reaches that teardown and leaves an anonymous `dokker-test-<hex>` stack behind. People then
+  clean those with a name sweep (`docker ps | grep dokker-test | xargs docker rm -f`), which cannot
+  tell a stray from the stack a live run in another terminal is using -- and removing that one turns
+  a green suite into hundreds of "database vanished" errors.
+
+Every `up()` that registers a `down` now stamps `dokker.owner.pid/.host/.start` labels onto its
+  services (via a temp compose override) and first runs `reap_stale()`, which downs only the
+  labelled stacks whose owner PID is dead on this host (recycled PIDs are told apart by the process
+  start marker). Kept stacks (`down_on_exit=False`, `--dokker-keep`), `local()` stacks, other hosts'
+  stacks and anything not started by dokker carry no label and are never touched; any doubt counts
+  as alive.
+
+- `dokker.reap_stale()` / `areap_stale()` exported for cleaning a machine by hand - `testing(...,
+  reap_stale=)` and `Deployment.reap_stale` to opt out - `CLI.areap_stale()`,
+  `CLI.aconfig_services()`, `astream_command(cwd=)` - also fixes an `await` inside a generator
+  expression that broke `test_five_stacks_come_up_concurrently_on_distinct_ports`
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Claude-Session: https://claude.ai/code/session_01UyygY5tfNueycZRm9y7ZWP
+
+
 ## v2.7.0 (2026-08-13)
 
 ### Features
