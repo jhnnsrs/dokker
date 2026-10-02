@@ -1,6 +1,59 @@
 # CHANGELOG
 
 
+## v2.9.0 (2026-10-02)
+
+### Bug Fixes
+
+- Images are reaped where compose does not label what it builds
+  ([`214a2bc`](https://github.com/jhnnsrs/dokker/commit/214a2bcb5310f4d03bb3387fbad5feb9750b6d6d))
+
+Compose 2.38 (what GitHub's runners carry) puts no project label on the images it builds, and both
+  reapers found a project's images by that label alone: a stranded stack's image stayed behind, and
+  the sweep of earlier testing stacks' images removed nothing.
+
+- A stranded stack's images are also what its containers run and name after the project, so they are
+  asked before the project is downed. - The sweep goes by the tag: a `dokker-test-<hex>-` name is
+  `testing()`'s own. A label that names another project still keeps the image.
+
+The tag time is read before the label, which can be empty: the line was stripped and the time then
+  read as the label.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+
+### Features
+
+- A testing stack's down removes the images built for it
+  ([`fa400f1`](https://github.com/jhnnsrs/dokker/commit/fa400f136edaaf4ba9d4e96239251cdc814d4904))
+
+`testing()` gives every run a random project name, and compose tags what it builds after the project
+  (`dokker-test-<id>-<service>`). No later run asks for that tag again, so each run left a pair
+  behind, each holding on to the layers of the sources it was built from.
+
+`down` now passes `--rmi local` for testing stacks (`remove_images`, `"local"` by default;
+  `Deployment.remove_images_on_down`): the images compose built and named after the project go with
+  it. Images a service names itself, pulled images and the build cache stay, so nothing is pulled
+  again and the next run builds from cache. `local()` keeps its images.
+
+`reap_stale()` removes the images of the stacks it reaps, and sweeps the `dokker-test-*` images no
+  stack uses any more (`reap_orphan_images()`): those of runs from before this change, and of runs
+  that died between building and creating their containers. An image tagged within the last hour is
+  left alone, since a run that is still building has an image and no container yet.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+
+### Testing
+
+- An image test that fails says what docker knows about the image
+  ([`65a599c`](https://github.com/jhnnsrs/dokker/commit/65a599cf6403e449061d940567aadecabfa5d9e3))
+
+The two reaping tests pass locally and fail on the runner, with nothing to tell why: the assertion
+  only shows the tag. They now name the engine, compose, the image store, and the image's labels and
+  tag time.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+
+
 ## v2.8.0 (2026-09-05)
 
 ### Bug Fixes
