@@ -45,6 +45,18 @@ def _images_for(project: str) -> list[str]:
     return _docker("image", "ls", "--filter", f"reference={project}-*", "--format", "{{.Repository}}")
 
 
+def _describe(project: str) -> str:
+    """What docker knows about the project's images, for a failure that only shows up elsewhere."""
+    versions = _docker("version", "--format", "engine {{.Server.Version}}, client {{.Client.Version}}")
+    compose = _docker("compose", "version", "--short")
+    driver = _docker("info", "--format", "{{.Driver}} {{.DriverStatus}}")
+    images = [
+        _docker("image", "inspect", "--format", "{{.RepoTags}} labels={{json .Config.Labels}} metadata={{json .Metadata}}", image)
+        for image in _images_for(project)
+    ]
+    return f"{versions} compose {compose} store {driver} images {images}"
+
+
 def _cleanup(project: str) -> None:
     subprocess.run(["docker", "compose", "-p", project, "down", "--volumes", "--remove-orphans"], capture_output=True, check=False)
     for image in _images_for(project):
@@ -82,7 +94,7 @@ def test_a_stranded_stacks_image_is_reaped_with_it():
         assert _images_for(project) == [f"{project}-built"]
 
         assert project in reap_stale()
-        assert _images_for(project) == []
+        assert _images_for(project) == [], _describe(project)
     finally:
         _cleanup(project)
 
@@ -103,7 +115,8 @@ def test_images_earlier_testing_stacks_left_behind_are_swept():
         assert reap_orphan_images(projects=[project]) == []
         assert _images_for(project) == [f"{project}-built"]
 
-        assert reap_orphan_images(grace=0, projects=[project]) == [f"{project}-built:latest"]
+        described = _describe(project)
+        assert reap_orphan_images(grace=0, projects=[project]) == [f"{project}-built:latest"], described
         assert _images_for(project) == []
         # Only `testing()`'s own random names are swept: a project somebody named is theirs.
         assert reap_orphan_images(grace=0, projects=[kept]) == []
