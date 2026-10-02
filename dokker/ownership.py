@@ -36,6 +36,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import socket
 import sys
@@ -253,18 +254,29 @@ def stale_projects(stacks: Mapping[str, Sequence[Mapping[str, str]]], hostname: 
 async def _aproject_images(project: str, docker: str, env: Optional[Dict[str, str]]) -> List[str]:
     """The images compose built for *project* and named after it (``<project>-<service>``).
 
-    Compose labels every image it builds with its project. Only the tags that carry
-    the project's name are returned: an image a service names itself (``image:``) is
-    somebody's to keep even though the same label is on it.
+    Two things say an image is the project's: compose's project label on it, and a
+    container of the project running it. Not every compose labels what it builds
+    (2.38 does not), so the label alone finds nothing there, and once the
+    containers are gone nothing else does: ask before the project is downed.
+
+    Only the tags that carry the project's name are returned: an image a service
+    names itself (``image:``) is somebody's to keep even though the project runs it.
     """
-    output = await _acollect([docker, "image", "ls", "--filter", f"label={COMPOSE_PROJECT_LABEL}={project}", "--format", "{{.Repository}}:{{.Tag}}"], env=env)
-    return [tag for tag in output.split() if tag.startswith(f"{project}-") or tag.startswith(f"{project}_")]
+
+    def named_after_project(tag: str) -> bool:
+        return tag.startswith(f"{project}-") or tag.startswith(f"{project}_")
+
+    selector = ["--filter", f"label={COMPOSE_PROJECT_LABEL}={project}"]
+    labelled = (await _acollect([docker, "image", "ls", *selector, "--format", "{{.Repository}}:{{.Tag}}"], env=env)).split()
+    run = (await _acollect([docker, "ps", "--all", *selector, "--format", "{{.Image}}"], env=env)).split()
+    # A container names its image as compose asked for it: without a tag.
+    run = [image if ":" in image else f"{image}:latest" for image in run]
+    return sorted({tag for tag in [*labelled, *run] if named_after_project(tag)})
 
 
-async def _aremove_project_images(project: str, docker: str, env: Optional[Dict[str, str]]) -> List[str]:
-    """Remove the images compose built for *project*; the tags that went."""
+async def _aremove_project_images(project: str, tags: List[str], docker: str, env: Optional[Dict[str, str]]) -> List[str]:
+    """Remove the images compose built for *project* (see `_aproject_images`); the tags that went."""
     try:
-        tags = await _aproject_images(project, docker, env)
         if tags:
             await _acollect([docker, "image", "rm", *tags], env=env)
         return tags
@@ -284,11 +296,16 @@ async def _adown_project(project: str, client_call: List[str], env: Optional[Dic
     """
     workdir = tempfile.mkdtemp(prefix="dokker-reap-")
     try:
+        # Without the compose file `down --rmi local` cannot tell which images the
+        # project built. Its containers can, so they are asked while they exist.
+        try:
+            images = await _aproject_images(project, client_call[0], env)
+        except CommandError as e:
+            logger.warning("Could not tell which images were built for %s: %s", project, e)
+            images = []
         try:
             await _acollect([*client_call, "--project-name", project, "down", "--volumes", "--remove-orphans"], env=env, cwd=workdir)
-            # Without the compose file `down --rmi local` cannot tell which images the
-            # project built, so they are removed by the label compose put on them.
-            await _aremove_project_images(project, client_call[0], env)
+            await _aremove_project_images(project, images, client_call[0], env)
             return
         except CommandError as e:
             logger.warning("`docker compose down` of stale project %s failed, removing by label instead: %s", project, e)
@@ -303,13 +320,15 @@ async def _adown_project(project: str, client_call: List[str], env: Optional[Dic
         volumes = (await _acollect([docker, "volume", "ls", "--quiet", *selector], env=env)).split()
         if volumes:
             await _acollect([docker, "volume", "rm", "--force", *volumes], env=env)
-        await _aremove_project_images(project, docker, env)
+        await _aremove_project_images(project, images, docker, env)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
 
 #: The prefix of the random project names `testing()` hands out.
 TESTING_PROJECT_PREFIX = "dokker-test-"
+#: A tag compose gave an image it built for a `testing()` project: the project is the first group.
+_TESTING_IMAGE_TAG = re.compile(rf"({re.escape(TESTING_PROJECT_PREFIX)}[0-9a-f]{{8}})[-_]")
 #: An image tagged more recently than this may belong to a run that is still building,
 #: before it has a container to be found by.
 ORPHAN_IMAGE_GRACE_SECONDS = 3600.0
@@ -351,10 +370,12 @@ async def areap_orphan_images(
     (``remove_images_on_down``), but runs from before it did, and runs that died
     between building and creating their containers, left theirs behind.
 
-    An image is removed when its tag carries a `testing()` project name, compose's
-    label on it names that same project, no container of that project exists in
-    any state, and it was tagged more than *grace* seconds ago (a run that is
-    building right now has an image and no container yet). Any doubt keeps it.
+    An image is removed when its tag carries a `testing()` project name, no
+    container of that project exists in any state, and it was tagged more than
+    *grace* seconds ago (a run that is building right now has an image and no
+    container yet). Compose's project label on the image has to name that same
+    project where there is one; not every compose labels what it builds (2.38 does
+    not), and there the random name is all there is to go by. Any doubt keeps it.
 
     Parameters
     ----------
@@ -375,16 +396,23 @@ async def areap_orphan_images(
     docker = list(client_call or ["docker", "compose"])[0]
     only = None if projects is None else set(projects)
     try:
-        tags = (await _acollect([docker, "image", "ls", "--filter", f"label={COMPOSE_PROJECT_LABEL}", "--filter", f"reference={TESTING_PROJECT_PREFIX}*", "--format", "{{.Repository}}:{{.Tag}}"], env=env)).split()
+        tags = (await _acollect([docker, "image", "ls", "--filter", f"reference={TESTING_PROJECT_PREFIX}*", "--format", "{{.Repository}}:{{.Tag}}"], env=env)).split()
         if not tags:
             return []
-        # One line per tag, in order: the project compose labelled it with, and when it was tagged.
-        details = (await _acollect([docker, "image", "inspect", "--format", f'{{{{index .Config.Labels "{COMPOSE_PROJECT_LABEL}"}}}}\t{{{{json .Metadata.LastTagTime}}}}', *tags], env=env)).splitlines()
+        # One line per tag, in order: when it was tagged, and the project compose labelled
+        # it with. The label comes last: it can be empty, and a line is stripped.
+        details = (await _acollect([docker, "image", "inspect", "--format", f'{{{{json .Metadata.LastTagTime}}}}\t{{{{index .Config.Labels "{COMPOSE_PROJECT_LABEL}"}}}}', *tags], env=env)).splitlines()
         in_use = set((await _acollect([docker, "ps", "--all", "--format", f'{{{{.Label "{COMPOSE_PROJECT_LABEL}"}}}}'], env=env)).split())
         orphaned: List[str] = []
         for tag, detail in zip(tags, details):
-            project, _, tagged = detail.partition("\t")
-            if not project.startswith(TESTING_PROJECT_PREFIX) or not tag.startswith(f"{project}-") or project in in_use:
+            tagged, _, labelled = detail.strip().partition("\t")
+            named = _TESTING_IMAGE_TAG.match(tag)
+            if named is None:
+                continue
+            project = named.group(1)
+            # Nothing is printed for an image compose did not label: only a label
+            # that names another project is a reason to leave it.
+            if (labelled and labelled != project) or project in in_use:
                 continue
             if only is not None and project not in only:
                 continue
