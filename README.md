@@ -43,7 +43,7 @@ The `policy` decides what `up()` schedules for context-manager exit. It is set g
 
 | `policy` | a bare `up()` on exit |
 |---|---|
-| `"testing"` | `down` — removes containers, networks, **volumes & orphans**, and tears the project down (e.g. a `mirror` temp dir) |
+| `"testing"` | `down` — removes containers, networks, **volumes, orphans & the images built for the project**, and tears the project down (e.g. a `mirror` temp dir) |
 | `"local"` | `stop` — stops containers but keeps them and any data volumes |
 | `"monitoring"` | nothing — never changes the stack |
 | `"manual"` | nothing — you tear it down yourself (the default for a hand-built `Deployment`) |
@@ -57,7 +57,7 @@ You rarely construct a `Deployment` by hand. Instead you pick a **builder** that
 | Builder | Use case | Policy | Typical body |
 |---|---|---|---|
 | `local(...)` | Drive a stack you start/stop yourself during a session. | `local` | `up()` (stops on exit, keeps data) |
-| `testing(...)` | Full integration test: bring everything up, wait for health, clean up completely. | `testing` | `pull()`, `up()`, `inspect()`, `check_health()` (downs + removes volumes/orphans on exit) |
+| `testing(...)` | Full integration test: bring everything up, wait for health, clean up completely. | `testing` | `pull()`, `up()`, `inspect()`, `check_health()` (downs + removes volumes/orphans/built images on exit) |
 | `monitoring(...)` | Observe/inspect a stack already running in production; never changes it via the compose CLI. | `monitoring` | `inspect()`, `check_health()` |
 | `mirror(...)` | Copy a local project into a temp dir and run it there, isolated from the source. | `testing` | `up()`; downs and removes the temp copy on exit |
 
@@ -73,7 +73,9 @@ deployment = local("docker-compose.yaml", project_name="my-service")
 
 `local(...)` derives a stable default when you pass none: the directory basename for the standard file names (`compose.yaml`, `docker-compose.yaml`, …) — exactly what a hand-typed `docker compose up` there would use, so existing stacks keep their names — and `<directory>-<file stem>` for any other file (`stacks/a-compose.yaml` → `stacks-a-compose`), so sibling compose files in one directory never merge. `monitoring(...)` leaves the name to compose, since it observes stacks it did not start.
 
-`testing(...)` is the exception: it defaults `project_name` to a unique random value (`dokker-test-<id>`) so parallel/identical test stacks get their own containers and networks. Pass an explicit `project_name` to pin it. `testing` also exposes `remove_orphans` and `remove_volumes` (both `True` by default) to control what `down` cleans up on teardown.
+`testing(...)` is the exception: it defaults `project_name` to a unique random value (`dokker-test-<id>`) so parallel/identical test stacks get their own containers and networks. Pass an explicit `project_name` to pin it. `testing` also exposes `remove_orphans` and `remove_volumes` (both `True` by default) and `remove_images` (`"local"` by default) to control what `down` cleans up on teardown.
+
+Because the project name is random, compose tags everything it builds for the stack as `dokker-test-<id>-<service>`, a name no later run will ask for. `remove_images="local"` removes exactly those on `down`; images a service names itself (`image:`), pulled images and the build cache stay, so the next run still builds from cache and pulls nothing again. `"all"` removes every image the services use, `None` keeps them. `reap_stale()` also removes the images of the stacks it reaps, and sweeps the `dokker-test-*` images that no stack uses any more and that were tagged over an hour ago (`dokker.reap_orphan_images()` does only that).
 
 ### Stray stacks: dokker cleans up after its own dead processes
 

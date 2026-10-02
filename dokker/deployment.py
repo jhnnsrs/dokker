@@ -213,6 +213,10 @@ class Deployment(KoiledModel):
         default=True,
         description="Should we remove named/anonymous volumes when downing the deployment (`--volumes`). Defaults to True so a `down` does not leak volumes; set False to preserve data (e.g. a local dev database).",
     )
+    remove_images_on_down: Optional[Literal["local", "all"]] = Field(
+        default=None,
+        description="Which images a `down` removes (`--rmi`). `local` removes the images compose built for this project and named after it (`<project>-<service>`: a service with `build:` and no `image:`), which nothing else will ever use again when the project name is a random one; `all` removes every image the services use, pulled ones included. None (the default) keeps them.",
+    )
     shutdown_timeout: Optional[int] = Field(
         default=None,
         description=("Grace period in seconds passed to `docker compose stop`/`down` as `-t`. A container that ignores SIGTERM is SIGKILLed after this many seconds, which bounds how long stopping a single container can block teardown. None (the default) uses docker's own default (10s)."),
@@ -1431,6 +1435,7 @@ class Deployment(KoiledModel):
         timeout: Optional[int] = None,
         volumes: Optional[bool] = None,
         remove_orphans: Optional[bool] = None,
+        remove_images: Optional[Literal["local", "all", "none"]] = None,
     ) -> LogRoll:
         """Down the deployment.
 
@@ -1447,6 +1452,10 @@ class Deployment(KoiledModel):
             Should we remove volumes. Defaults to ``remove_volumes_on_down``.
         remove_orphans : Optional[bool], optional
             Should we remove orphans. Defaults to ``remove_orphans_on_down``.
+        remove_images : Optional[Literal["local", "all", "none"]], optional
+            Which images to remove (``--rmi``): ``"local"`` the ones compose built and
+            named after this project, ``"all"`` every image the services use,
+            ``"none"`` keeps them. Defaults to ``remove_images_on_down``.
 
         Returns
         -------
@@ -1455,6 +1464,9 @@ class Deployment(KoiledModel):
         """
         cli = await self.aretrieve_cli()
         await self.project.abefore_down()
+        if remove_images is None:
+            remove_images = self.remove_images_on_down
+        rmi = None if remove_images == "none" else remove_images
         if timeout is None:
             timeout = self.shutdown_timeout
         if volumes is None:
@@ -1463,7 +1475,7 @@ class Deployment(KoiledModel):
             remove_orphans = self.remove_orphans_on_down
 
         logs = LogRoll()
-        async for log in cli.astream_down(timeout=timeout, volumes=volumes, remove_orphans=remove_orphans):
+        async for log in cli.astream_down(timeout=timeout, volumes=volumes, remove_orphans=remove_orphans, remove_images=rmi):
             logs.append(log)
             self.logger.on_down(log)
 
@@ -1496,6 +1508,7 @@ class Deployment(KoiledModel):
         timeout: Optional[int] = None,
         volumes: Optional[bool] = None,
         remove_orphans: Optional[bool] = None,
+        remove_images: Optional[Literal["local", "all", "none"]] = None,
     ) -> LogRoll:
         """Down the deployment.
 
@@ -1512,13 +1525,17 @@ class Deployment(KoiledModel):
             Should we remove volumes. Defaults to ``remove_volumes_on_down``.
         remove_orphans : Optional[bool], optional
             Should we remove orphans. Defaults to ``remove_orphans_on_down``.
+        remove_images : Optional[Literal["local", "all", "none"]], optional
+            Which images to remove (``--rmi``): ``"local"`` the ones compose built and
+            named after this project, ``"all"`` every image the services use,
+            ``"none"`` keeps them. Defaults to ``remove_images_on_down``.
 
         Returns
         -------
         LogRoll
             The logs of the down command.
         """
-        return unkoil(self.adown, timeout=timeout, volumes=volumes, remove_orphans=remove_orphans)
+        return unkoil(self.adown, timeout=timeout, volumes=volumes, remove_orphans=remove_orphans, remove_images=remove_images)
 
     async def astop(self, timeout: Optional[int] = None) -> LogRoll:
         """Stop the deployment.

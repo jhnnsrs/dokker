@@ -98,7 +98,7 @@ class RecordingCLI:
         self._maybe_fail("astream_up")
 
     async def astream_down(self, remove_orphans: bool = False, remove_images=None, timeout=None, volumes: bool = False, **kw):
-        self.rec.add("astream_down", remove_orphans=remove_orphans, timeout=timeout, volumes=volumes)
+        self.rec.add("astream_down", remove_orphans=remove_orphans, timeout=timeout, volumes=volumes, remove_images=remove_images)
         await self._maybe("astream_down")
         yield ("STDOUT", "down line")
         self._maybe_fail("astream_down")
@@ -494,6 +494,24 @@ async def test_down_flags_respect_deployment_config():
     await make_deployment(rec, remove_volumes_on_down=False, remove_orphans_on_down=False).adown()
     assert rec.kwargs["astream_down"]["volumes"] is False
     assert rec.kwargs["astream_down"]["remove_orphans"] is False
+
+
+async def test_down_keeps_images_unless_told_otherwise():
+    rec = Recorder()
+    await make_deployment(rec).adown()
+    assert rec.kwargs["astream_down"]["remove_images"] is None
+
+
+async def test_down_removes_the_images_the_deployment_is_configured_to():
+    rec = Recorder()
+    deployment = make_deployment(rec, remove_images_on_down="local")
+    await deployment.adown()
+    assert rec.kwargs["astream_down"]["remove_images"] == "local"
+    # Per call, "none" keeps them and another scope replaces the configured one.
+    await deployment.adown(remove_images="none")
+    assert rec.kwargs["astream_down"]["remove_images"] is None
+    await deployment.adown(remove_images="all")
+    assert rec.kwargs["astream_down"]["remove_images"] == "all"
 
 
 async def test_shutdown_timeout_threads_into_stop_and_down():

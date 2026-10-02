@@ -7,11 +7,16 @@ and only once the owner is provably gone". Everything here is about the
 """
 
 import os
+
+import pytest
 import socket
 import subprocess
 import sys
 
+from datetime import datetime, timezone
+
 from dokker.ownership import (
+    _tagged_seconds_ago,
     COMPOSE_PROJECT_LABEL,
     OWNER_HOST_LABEL,
     OWNER_PID_LABEL,
@@ -97,3 +102,15 @@ def test_override_labels_exactly_the_given_services(tmp_path):
 def test_override_for_no_services_is_still_valid_yaml(tmp_path):
     path = write_owner_override([], str(tmp_path), labels={OWNER_PID_LABEL: "1", OWNER_HOST_LABEL: "box"})
     assert open(path, encoding="utf-8").read().rstrip().endswith("services:\n  {}")
+
+
+def test_an_images_tag_age_is_read_from_dockers_timestamp():
+    now = datetime(2026, 10, 2, 12, 0, 0, tzinfo=timezone.utc)
+    # As `docker image inspect --format '{{json .Metadata.LastTagTime}}'` prints it.
+    assert _tagged_seconds_ago('"2026-10-02T11:00:00.337327906Z"', now) == pytest.approx(3600 - 0.337327)
+    assert _tagged_seconds_ago('"2026-10-02T13:00:00.5+02:00"', now) == pytest.approx(3600 - 0.5)
+    assert _tagged_seconds_ago('"2026-10-02T11:00:00Z"', now) == 3600
+    # Never tagged, or not a time at all: unknown, which keeps the image.
+    assert _tagged_seconds_ago('"0001-01-01T00:00:00Z"', now) is None
+    assert _tagged_seconds_ago("", now) is None
+    assert _tagged_seconds_ago("yesterday", now) is None

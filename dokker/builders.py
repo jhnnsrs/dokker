@@ -3,7 +3,7 @@ import re
 import uuid
 from .checks import Check
 from .deployment import Deployment, PolicyName
-from typing import List, Optional, Union
+from typing import List, Literal, Optional, Union
 from dokker.projects.copy import CopyPathProject
 from dokker.projects.local import LocalProject
 from dokker.types import ValidPath
@@ -208,12 +208,13 @@ def testing(
     remove_volumes: bool = True,
     policy: PolicyName = "testing",
     reap_stale: bool = True,
+    remove_images: Optional[Literal["local", "all"]] = "local",
 ) -> Deployment:
     """Generates a testing deployment.
 
     A testing deployment runs a docker-compose file locally with sensible defaults
     for integration tests: a unique project name, bounded teardown timeouts, and
-    orphan/volume removal on ``down``. Nothing happens on enter; from inside the
+    removal of orphans, volumes and the images built for the project on ``down``. Nothing happens on enter; from inside the
     context manager call ``pull()``, ``up()``, ``inspect()`` and ``check_health()``.
     Under the default ``"testing"`` policy a bare ``up()`` brings the stack down
     (removing volumes and orphans) and tears the project down on exit.
@@ -259,6 +260,16 @@ def testing(
         on this host (see ``dokker.reap_stale``), by default True. Only stacks
         that were themselves going to be downed on exit are candidates; kept
         (``down_on_exit=False``) and ``local()`` stacks are never touched.
+    remove_images : Optional[Literal["local", "all"]], optional
+        Which images ``down`` removes at teardown, ``"local"`` by default: the
+        images compose built for this project and named after it
+        (``<project>-<service>``, for a service with ``build:`` and no
+        ``image:``). With a random project name every run tags a new pair that
+        nothing will use again; left alone they pile up, each holding on to the
+        layers of the sources it was built from. The build cache is not touched,
+        so the next run still builds from cache. Images a service names itself
+        (``image:``) and pulled images are kept. ``"all"`` removes those too;
+        None keeps everything.
 
     Returns
     -------
@@ -286,6 +297,7 @@ def testing(
 
     deployment.remove_orphans_on_down = remove_orphans
     deployment.remove_volumes_on_down = remove_volumes
+    deployment.remove_images_on_down = remove_images
 
     return deployment
 

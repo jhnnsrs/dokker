@@ -67,6 +67,13 @@ def test_testing_orphan_and_volume_removal_configurable():
     assert off.remove_volumes_on_down is False
 
 
+def test_testing_removes_the_images_built_for_its_project():
+    """A random project name tags images nothing will ask for again: `down` takes them along."""
+    assert make_testing(COMPOSE_FILE).remove_images_on_down == "local"
+    assert make_testing(COMPOSE_FILE, remove_images=None).remove_images_on_down is None
+    assert make_testing(COMPOSE_FILE, remove_images="all").remove_images_on_down == "all"
+
+
 def test_builders_set_their_default_policy():
     assert make_testing(COMPOSE_FILE).policy == "testing"
     assert local(COMPOSE_FILE).policy == "local"

@@ -40,6 +40,7 @@ import shutil
 import socket
 import sys
 import tempfile
+from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence
 
 from koil import unkoil
@@ -249,6 +250,29 @@ def stale_projects(stacks: Mapping[str, Sequence[Mapping[str, str]]], hostname: 
     return sorted(stale)
 
 
+async def _aproject_images(project: str, docker: str, env: Optional[Dict[str, str]]) -> List[str]:
+    """The images compose built for *project* and named after it (``<project>-<service>``).
+
+    Compose labels every image it builds with its project. Only the tags that carry
+    the project's name are returned: an image a service names itself (``image:``) is
+    somebody's to keep even though the same label is on it.
+    """
+    output = await _acollect([docker, "image", "ls", "--filter", f"label={COMPOSE_PROJECT_LABEL}={project}", "--format", "{{.Repository}}:{{.Tag}}"], env=env)
+    return [tag for tag in output.split() if tag.startswith(f"{project}-") or tag.startswith(f"{project}_")]
+
+
+async def _aremove_project_images(project: str, docker: str, env: Optional[Dict[str, str]]) -> List[str]:
+    """Remove the images compose built for *project*; the tags that went."""
+    try:
+        tags = await _aproject_images(project, docker, env)
+        if tags:
+            await _acollect([docker, "image", "rm", *tags], env=env)
+        return tags
+    except CommandError as e:
+        logger.warning("Could not remove the images built for %s: %s", project, e)
+        return []
+
+
 async def _adown_project(project: str, client_call: List[str], env: Optional[Dict[str, str]]) -> None:
     """Remove *project* completely, by name alone.
 
@@ -262,6 +286,9 @@ async def _adown_project(project: str, client_call: List[str], env: Optional[Dic
     try:
         try:
             await _acollect([*client_call, "--project-name", project, "down", "--volumes", "--remove-orphans"], env=env, cwd=workdir)
+            # Without the compose file `down --rmi local` cannot tell which images the
+            # project built, so they are removed by the label compose put on them.
+            await _aremove_project_images(project, client_call[0], env)
             return
         except CommandError as e:
             logger.warning("`docker compose down` of stale project %s failed, removing by label instead: %s", project, e)
@@ -276,8 +303,109 @@ async def _adown_project(project: str, client_call: List[str], env: Optional[Dic
         volumes = (await _acollect([docker, "volume", "ls", "--quiet", *selector], env=env)).split()
         if volumes:
             await _acollect([docker, "volume", "rm", "--force", *volumes], env=env)
+        await _aremove_project_images(project, docker, env)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
+
+
+#: The prefix of the random project names `testing()` hands out.
+TESTING_PROJECT_PREFIX = "dokker-test-"
+#: An image tagged more recently than this may belong to a run that is still building,
+#: before it has a container to be found by.
+ORPHAN_IMAGE_GRACE_SECONDS = 3600.0
+
+
+def _tagged_seconds_ago(last_tag_time: str, now: Optional[datetime] = None) -> Optional[float]:
+    """How long ago docker last tagged an image (``{{json .Metadata.LastTagTime}}``), or None if unknown."""
+    stamp = last_tag_time.strip().strip('"')
+    if not stamp or stamp.startswith("0001-"):
+        return None
+    # RFC 3339 with nanoseconds and `Z`, which `fromisoformat` only reads up to microseconds.
+    if stamp.endswith("Z"):
+        stamp = stamp[:-1] + "+00:00"
+    head, dot, rest = stamp.partition(".")
+    if dot:
+        digits = rest[: len(rest) - len(rest.lstrip("0123456789"))]
+        zone = rest[len(digits) :]
+        stamp = f"{head}.{digits[:6]}{zone}"
+    try:
+        tagged = datetime.fromisoformat(stamp)
+    except ValueError:
+        return None
+    if tagged.tzinfo is None:
+        tagged = tagged.replace(tzinfo=timezone.utc)
+    return ((now or datetime.now(timezone.utc)) - tagged).total_seconds()
+
+
+async def areap_orphan_images(
+    client_call: Optional[List[str]] = None,
+    env: Optional[Dict[str, str]] = None,
+    grace: float = ORPHAN_IMAGE_GRACE_SECONDS,
+    projects: Optional[Iterable[str]] = None,
+) -> List[str]:
+    """Remove the images earlier `testing()` runs built and no stack uses any more.
+
+    A `testing()` stack has a random project name, and compose names what it builds
+    after the project (``dokker-test-<hex>-<service>``): once the stack is gone no
+    run will ever ask for that tag again. `down` removes them now
+    (``remove_images_on_down``), but runs from before it did, and runs that died
+    between building and creating their containers, left theirs behind.
+
+    An image is removed when its tag carries a `testing()` project name, compose's
+    label on it names that same project, no container of that project exists in
+    any state, and it was tagged more than *grace* seconds ago (a run that is
+    building right now has an image and no container yet). Any doubt keeps it.
+
+    Parameters
+    ----------
+    client_call : Optional[List[str]]
+        The compose invocation, e.g. ``["docker", "compose"]`` (the default).
+    env : Optional[Dict[str, str]]
+        Extra environment for the docker commands.
+    grace : float
+        How long ago, in seconds, an image must have been tagged to count as left behind.
+    projects : Optional[Iterable[str]]
+        Look only at these projects' images; all `testing()` projects by default.
+
+    Returns
+    -------
+    List[str]
+        The tags that were removed.
+    """
+    docker = list(client_call or ["docker", "compose"])[0]
+    only = None if projects is None else set(projects)
+    try:
+        tags = (await _acollect([docker, "image", "ls", "--filter", f"label={COMPOSE_PROJECT_LABEL}", "--filter", f"reference={TESTING_PROJECT_PREFIX}*", "--format", "{{.Repository}}:{{.Tag}}"], env=env)).split()
+        if not tags:
+            return []
+        # One line per tag, in order: the project compose labelled it with, and when it was tagged.
+        details = (await _acollect([docker, "image", "inspect", "--format", f'{{{{index .Config.Labels "{COMPOSE_PROJECT_LABEL}"}}}}\t{{{{json .Metadata.LastTagTime}}}}', *tags], env=env)).splitlines()
+        in_use = set((await _acollect([docker, "ps", "--all", "--format", f'{{{{.Label "{COMPOSE_PROJECT_LABEL}"}}}}'], env=env)).split())
+        orphaned: List[str] = []
+        for tag, detail in zip(tags, details):
+            project, _, tagged = detail.partition("\t")
+            if not project.startswith(TESTING_PROJECT_PREFIX) or not tag.startswith(f"{project}-") or project in in_use:
+                continue
+            if only is not None and project not in only:
+                continue
+            age = _tagged_seconds_ago(tagged)
+            if age is not None and age > grace:
+                orphaned.append(tag)
+        removed: List[str] = []
+        # Tag by tag: one that another process removed meanwhile must not keep the rest.
+        for tag in orphaned:
+            try:
+                await _acollect([docker, "image", "rm", tag], env=env)
+            except CommandError as e:
+                logger.warning("Could not remove the orphaned image %s: %s", tag, e)
+                continue
+            removed.append(tag)
+        if removed:
+            logger.info("Removed %d image(s) earlier testing stacks left behind.", len(removed))
+        return removed
+    except CommandError as e:
+        logger.warning("Could not look for orphaned testing images, skipping: %s", e)
+        return []
 
 
 async def areap_stale(client_call: Optional[List[str]] = None, env: Optional[Dict[str, str]] = None) -> List[str]:
@@ -289,6 +417,9 @@ async def areap_stale(client_call: Optional[List[str]] = None, env: Optional[Dic
     that PID is gone (or has been reused). Stacks owned by live processes,
     recorded by other hosts, kept with ``--dokker-keep``/``down_on_exit=False``,
     or started outside dokker are left untouched.
+
+    A reaped stack's own built images go with it, and so do the images earlier
+    testing stacks left behind (see :func:`areap_orphan_images`).
 
     Runs automatically at the start of every ``up`` that registers a ``down``
     (``Deployment.reap_stale``, default True); call it directly to clean a
@@ -325,6 +456,7 @@ async def areap_stale(client_call: Optional[List[str]] = None, env: Optional[Dic
             logger.warning("Could not remove stale stack %s: %s", project, e)
             continue
         reaped.append(project)
+    await areap_orphan_images(client_call, env=env)
     return reaped
 
 
@@ -338,3 +470,20 @@ def reap_stale(client_call: Optional[List[str]] = None, env: Optional[Dict[str, 
         return unkoil(areap_stale, client_call=client_call, env=env)
     except KoilError:
         return asyncio.run(areap_stale(client_call=client_call, env=env))
+
+
+def reap_orphan_images(
+    client_call: Optional[List[str]] = None,
+    env: Optional[Dict[str, str]] = None,
+    grace: float = ORPHAN_IMAGE_GRACE_SECONDS,
+    projects: Optional[Iterable[str]] = None,
+) -> List[str]:
+    """Synchronous form of :func:`areap_orphan_images`.
+
+    Works both inside a koil context and from a plain script or REPL, like
+    :func:`reap_stale`.
+    """
+    try:
+        return unkoil(areap_orphan_images, client_call=client_call, env=env, grace=grace, projects=projects)
+    except KoilError:
+        return asyncio.run(areap_orphan_images(client_call=client_call, env=env, grace=grace, projects=projects))

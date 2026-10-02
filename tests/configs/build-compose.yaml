@@ -1,0 +1,10 @@
+# A stack with one service compose BUILDS and one it pulls, used to prove what a
+# testing stack's `down` does with images: the built one is named after the
+# project (`<project>-built`) and goes with it; the pulled one stays.
+services:
+  built:
+    build: ./build-src
+    command: ["sleep", "infinity"]
+  pulled:
+    image: alpine:3.20
+    command: ["sleep", "infinity"]
