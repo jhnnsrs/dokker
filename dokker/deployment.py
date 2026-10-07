@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import asyncio
 from pathlib import Path
 from dokker.compose_spec import ComposeSpec, ContainerStatus
-from dokker.project import Project
+from dokker.project import DownOptions, DownsItself, Project, PullOptions, PullsItself, StartsItself, StopsItself, UpOptions
 from typing import Union
 from koil import unkoil
 from dokker.cli import CLI
@@ -994,25 +994,48 @@ class Deployment(KoiledModel):
             # with our PID so a later process can do the same for us.
             if self.reap_stale:
                 await cli.areap_stale()
-            await self._aensure_owner_labels(cli)
+            # The labels travel in a compose override, which only compose's own
+            # `up` reads: a project that starts itself looks after its strays.
+            if not isinstance(self.project, StartsItself):
+                await self._aensure_owner_labels(cli)
             self._register_cleanup(self.adown, key="down")
         elif action == "stop":
             self._register_cleanup(self.astop, key="stop")
 
-        async for log in cli.astream_up(
-            detach=detach,
-            services=services,
-            build=build,
-            wait=wait,
-            wait_timeout=wait_timeout,
-            force_recreate=force_recreate,
-            no_recreate=no_recreate,
-            no_build=no_build,
-            remove_orphans=remove_orphans,
-            renew_anon_volumes=renew_anon_volumes,
-            pull=pull,
-            scales=scales or {},
-        ):
+        if isinstance(self.project, StartsItself):
+            stream = self.project.astream_up(
+                cli,
+                UpOptions(
+                    detach=detach,
+                    services=services,
+                    build=build,
+                    wait=wait,
+                    wait_timeout=wait_timeout,
+                    force_recreate=force_recreate,
+                    no_recreate=no_recreate,
+                    no_build=no_build,
+                    remove_orphans=remove_orphans,
+                    renew_anon_volumes=renew_anon_volumes,
+                    pull=pull,
+                    scales=scales or {},
+                ),
+            )
+        else:
+            stream = cli.astream_up(
+                detach=detach,
+                services=services,
+                build=build,
+                wait=wait,
+                wait_timeout=wait_timeout,
+                force_recreate=force_recreate,
+                no_recreate=no_recreate,
+                no_build=no_build,
+                remove_orphans=remove_orphans,
+                renew_anon_volumes=renew_anon_volumes,
+                pull=pull,
+                scales=scales or {},
+            )
+        async for log in stream:
             logs.append(log)
             self.logger.on_up(log)
 
@@ -1198,12 +1221,19 @@ class Deployment(KoiledModel):
         await self.project.abefore_pull()
 
         logs = LogRoll()
-        async for log in cli.astream_pull(
-            services=services,
-            ignore_pull_failures=ignore_pull_failures,
-            include_deps=include_deps,
-            quiet=quiet,
-        ):
+        if isinstance(self.project, PullsItself):
+            stream = self.project.astream_pull(
+                cli,
+                PullOptions(services=services, ignore_pull_failures=ignore_pull_failures, include_deps=include_deps, quiet=quiet),
+            )
+        else:
+            stream = cli.astream_pull(
+                services=services,
+                ignore_pull_failures=ignore_pull_failures,
+                include_deps=include_deps,
+                quiet=quiet,
+            )
+        async for log in stream:
             logs.append(log)
             self.logger.on_pull(log)
 
@@ -1475,7 +1505,11 @@ class Deployment(KoiledModel):
             remove_orphans = self.remove_orphans_on_down
 
         logs = LogRoll()
-        async for log in cli.astream_down(timeout=timeout, volumes=volumes, remove_orphans=remove_orphans, remove_images=rmi):
+        if isinstance(self.project, DownsItself):
+            stream = self.project.astream_down(cli, DownOptions(timeout=timeout, volumes=volumes, remove_orphans=remove_orphans, remove_images=rmi))
+        else:
+            stream = cli.astream_down(timeout=timeout, volumes=volumes, remove_orphans=remove_orphans, remove_images=rmi)
+        async for log in stream:
             logs.append(log)
             self.logger.on_down(log)
 
@@ -1561,7 +1595,8 @@ class Deployment(KoiledModel):
             timeout = self.shutdown_timeout
 
         logs = LogRoll()
-        async for log in cli.astream_stop(timeout=timeout):
+        stream = self.project.astream_stop(cli, timeout) if isinstance(self.project, StopsItself) else cli.astream_stop(timeout=timeout)
+        async for log in stream:
             logs.append(log)
             self.logger.on_stop(log)
 

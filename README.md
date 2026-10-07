@@ -157,6 +157,33 @@ Commands are executed directly rather than through a host shell, so shell syntax
 
 `pull()`, `build()`, `stop()`, `kill()`, `restart()`, `down()`, `logs()` (one-shot), `ps()` and `cp()` are all available, each with an `a`-prefixed async twin. `up()` forwards the compose options you'd expect: `services`, `build`, `wait`, `force_recreate`, `pull`, `scales`, `remove_orphans`.
 
+### Projects that run their own stack
+
+A `Deployment` gets its compose project from a `Project` (`LocalProject` for a compose file, `CopyPathProject` for a copied directory). By default dokker then starts and stops it with `docker compose`. A stack that cannot be started that way — one a generator has to prepare first, or one another tool owns — can keep those verbs for itself: a project that also implements `StartsItself`, `StopsItself`, `DownsItself` or `PullsItself` is asked instead of compose, one verb at a time.
+
+```python
+from dokker import CLI, Deployment, DownOptions, UpOptions
+
+class GeneratedProject:  # plus the usual Project methods
+    async def ainititialize(self) -> CLI:
+        ...  # write the compose file, return the CLI that addresses it
+
+    async def astream_up(self, cli: CLI, options: UpOptions):
+        async for line in run_my_tool("up", self.directory):
+            yield ("STDOUT", line)
+
+    async def astream_down(self, cli: CLI, options: DownOptions):
+        ...
+
+with Deployment(project=GeneratedProject(), policy="testing") as deployment:
+    deployment.up()                 # your tool
+    deployment.logs("web")          # compose, on the project your CLI names
+    deployment.exec("web", "true")
+# down through your tool, then the project's tear-down
+```
+
+Everything around the verb stays dokker's: the `abefore_*` hooks, loggers, the teardown registered for exit, `teardown_timeout`. Inspection (`ps`, `logs`, `exec`, `run`, `get_port`, watchers, checks) always goes through the `CLI` the project returned, so it has to name the same compose project the tool runs. Options arrive as `UpOptions` / `DownOptions` / `PullOptions`; raise `ProjectError` for one the tool cannot honour. One thing is not done for such a project: owner labels are stamped through a compose override only compose's own `up` reads, so a project that starts itself cleans up after its own dead processes.
+
 ### `LogWatcher`
 
 `deployment.create_watcher(service)` returns a context manager that streams a service's logs in the background. Inside the `with` block you interact with the service; afterwards `watcher.collected_logs` holds the captured `(source, line)` pairs. The watcher always cleans up its streaming subprocess, even if the block raises.

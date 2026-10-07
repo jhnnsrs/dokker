@@ -28,7 +28,7 @@ from .checks import (
     LogCheck,
     TcpCheck,
 )
-from .project import Project
+from .project import DownOptions, DownsItself, Project, PullOptions, PullsItself, StartsItself, StopsItself, UpOptions
 from .projects.copy import CopyPathProject
 from .projects.local import LocalProject
 from .log_watcher import LogRoll, LogWatcher
@@ -66,6 +66,13 @@ __all__ = [
     "monitoring",
     "local",
     "Project",
+    "StartsItself",
+    "StopsItself",
+    "DownsItself",
+    "PullsItself",
+    "UpOptions",
+    "DownOptions",
+    "PullOptions",
     "LocalProject",
     "CopyPathProject",
     "LogRoll",

@@ -23,7 +23,7 @@ import os
 
 import pytest
 
-from dokker import CommandError, Deployment
+from dokker import CommandError, Deployment, DownOptions, DownsItself, ProjectError, PullOptions, PullsItself, StartsItself, StopsItself, UpOptions
 from dokker.compose_spec import ComposeSpec
 from dokker.errors import NotInitializedError, TearDownError
 from dokker.loggers.progress import ProgressLogger
@@ -787,3 +787,156 @@ async def test_stop_is_idempotent_after_a_failure():
         logger.stop()
 
     assert buffer.getvalue().count("\r\x1b[K") == 1
+
+
+# --------------------------------------------------------------------------- #
+# A project that owns the lifecycle
+# --------------------------------------------------------------------------- #
+class SelfRunProject(RecordingProject):
+    """A project that starts, stops, downs and pulls its own stack."""
+
+    def __init__(self, rec: Recorder, *, refuse_scales: bool = False, **cli_kwargs) -> None:
+        super().__init__(rec, **cli_kwargs)
+        self.refuse_scales = refuse_scales
+        self.options: dict[str, object] = {}
+
+    async def astream_up(self, cli, options: UpOptions):
+        if self.refuse_scales and options.scales:
+            raise ProjectError("this project cannot scale a service")
+        self.rec.add("project_up")
+        self.options["up"] = options
+        yield ("STDERR", "project up line")
+
+    async def astream_stop(self, cli, timeout):
+        self.rec.add("project_stop")
+        self.options["stop"] = timeout
+        yield ("STDOUT", "project stop line")
+
+    async def astream_down(self, cli, options: DownOptions):
+        self.rec.add("project_down")
+        self.options["down"] = options
+        yield ("STDOUT", "project down line")
+
+    async def astream_pull(self, cli, options: PullOptions):
+        self.rec.add("project_pull")
+        self.options["pull"] = options
+        yield ("STDERR", "project pull line")
+
+
+class OnlyStartsItself(RecordingProject):
+    """A project that takes over ``up`` and leaves the rest to compose."""
+
+    async def astream_up(self, cli, options: UpOptions):
+        self.rec.add("project_up")
+        yield ("STDERR", "project up line")
+
+
+def test_a_compose_only_project_owns_no_verb():
+    project = RecordingProject(Recorder())
+    assert not isinstance(project, (StartsItself, StopsItself, DownsItself, PullsItself))
+
+
+async def test_project_that_starts_itself_replaces_compose_up():
+    rec = Recorder()
+    project = SelfRunProject(rec)
+    async with Deployment(project=project) as d:
+        logs = await d.aup(down_on_exit=False, wait=True, wait_timeout=7, services="echo")
+
+    assert rec.events == ["ainititialize", "abefore_up", "project_up"]
+    assert logs == [("STDERR", "project up line")]
+    assert d.up_logs == ["project up line"]
+    assert project.options["up"] == UpOptions(wait=True, wait_timeout=7, services="echo")
+
+
+async def test_project_lifecycle_runs_pull_stop_and_down_through_the_project():
+    rec = Recorder()
+    project = SelfRunProject(rec)
+    async with Deployment(project=project, shutdown_timeout=4, remove_images_on_down="local") as d:
+        await d.apull(services=["echo"], quiet=True)
+        await d.astop()
+        await d.adown(remove_images="none")
+
+    assert rec.events == ["ainititialize", "abefore_pull", "project_pull", "abefore_stop", "project_stop", "abefore_down", "project_down"]
+    assert project.options["pull"] == PullOptions(services=["echo"], quiet=True)
+    assert project.options["stop"] == 4
+    # The deployment's defaults are resolved before the project sees them.
+    assert project.options["down"] == DownOptions(timeout=4, volumes=True, remove_orphans=True, remove_images=None)
+    assert d.pull_logs == ["project pull line"]
+    assert d.stop_logs == ["project stop line"]
+
+
+async def test_project_lifecycle_tears_down_through_the_project_on_exit():
+    rec = Recorder()
+    async with Deployment(project=SelfRunProject(rec), policy="testing") as d:
+        await d.aup()
+    assert rec.events[-2:] == ["project_down", "atear_down"]
+    assert "astream_down" not in rec.events
+
+    rec = Recorder()
+    async with Deployment(project=SelfRunProject(rec), policy="local") as d:
+        await d.aup()
+    assert rec.events[-1] == "project_stop"
+    assert "astream_stop" not in rec.events
+
+
+async def test_project_that_starts_itself_gets_no_owner_labels_but_still_reaps():
+    """The labels ride on a compose override this project's ``up`` never reads."""
+    rec = Recorder()
+    async with Deployment(project=SelfRunProject(rec), policy="testing") as d:
+        await d.aup()
+        assert "areap_stale" in rec.events
+        assert "aconfig_services" not in rec.events
+        assert d._cli.compose_files == ["docker-compose.yaml"]
+
+
+async def test_project_lifecycle_feeds_the_logger():
+    rec = Recorder()
+    seen: list[tuple[str, tuple[str, str]]] = []
+
+    class Listening:
+        def on_pull(self, log):
+            seen.append(("pull", log))
+
+        def on_up(self, log):
+            seen.append(("up", log))
+
+        def on_stop(self, log):
+            seen.append(("stop", log))
+
+        def on_logs(self, log):
+            seen.append(("logs", log))
+
+        def on_down(self, log):
+            seen.append(("down", log))
+
+    async with Deployment(project=SelfRunProject(rec), logger=Listening()) as d:
+        await d.apull()
+        await d.aup(down_on_exit=False)
+        await d.astop()
+        await d.adown()
+
+    assert [name for name, _ in seen] == ["pull", "up", "stop", "down"]
+
+
+async def test_project_refusing_an_option_still_has_its_teardown_registered():
+    rec = Recorder()
+    with pytest.raises(ProjectError):
+        async with Deployment(project=SelfRunProject(rec, refuse_scales=True), policy="testing") as d:
+            await d.aup(scales={"worker": 3})
+    assert "project_up" not in rec.events
+    assert "project_down" in rec.events
+
+
+async def test_project_may_own_up_alone():
+    rec = Recorder()
+    async with Deployment(project=OnlyStartsItself(rec), policy="testing") as d:
+        await d.aup()
+    assert "project_up" in rec.events and "astream_up" not in rec.events
+    assert rec.count("astream_down") == 1
+
+
+def test_sync_up_goes_through_the_project():
+    rec = Recorder()
+    with Deployment(project=SelfRunProject(rec), policy="testing") as d:
+        d.up()
+    assert rec.events == ["ainititialize", "abefore_up", "areap_stale", "project_up", "abefore_down", "project_down", "atear_down"]
