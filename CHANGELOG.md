@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v2.10.0 (2026-10-07)
+
+### Features
+
+- A project may start, stop, down and pull its own stack
+  ([`659e1b4`](https://github.com/jhnnsrs/dokker/commit/659e1b452bf64a495e7ffedaba6fea641f56b2ca))
+
+A deployment's up/down/stop/pull were docker compose's alone. A stack that a generator has to
+  prepare before its containers exist cannot be started that way, so a project can now keep those
+  verbs: StartsItself, StopsItself, DownsItself and PullsItself are asked instead of compose, one
+  verb at a time, with the options as UpOptions/DownOptions/PullOptions. Hooks, loggers and the
+  teardown registered for exit stay the deployment's. Owner labels ride on a compose override such a
+  project's up never reads, so they are left out for it.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+
+
 ## v2.9.0 (2026-10-02)
 
 ### Bug Fixes
