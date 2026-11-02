@@ -4,7 +4,8 @@ from types import TracebackType
 from koil import unkoil
 from koil.composition import KoiledModel
 import asyncio
-from typing import Optional, List, Self, Tuple, Type, Union, Generator
+from typing import Self
+from collections.abc import Generator
 from dokker.cli import CLIBearer
 from pydantic import Field
 
@@ -12,7 +13,7 @@ from dokker.errors import LogWatcherTimeoutError
 from dokker.types import LogFunction
 
 
-def format_log_watcher_message(watcher: "LogWatcher", exc_val: Optional[BaseException], rich: bool = True) -> str:
+def format_log_watcher_message(watcher: "LogWatcher", exc_val: BaseException | None, rich: bool = True) -> str:
     """Formats the log watcher message for the exception."""
     extra_info = map(
         lambda x: x[1] if x[0] == "STDERR" or watcher.capture_stdout else "",
@@ -33,7 +34,7 @@ class LogRoll(list[tuple[str, str]]):
     not to raise on a non-zero result.
     """
 
-    returncode: Optional[int] = None
+    returncode: int | None = None
 
     @property
     def stdout_gen(self) -> Generator[str, None, None]:
@@ -50,12 +51,12 @@ class LogRoll(list[tuple[str, str]]):
                 yield x
 
     @property
-    def stderr_list(self) -> List[str]:
+    def stderr_list(self) -> list[str]:
         """List of stderr logs."""
         return list(self.stderr_gen)
 
     @property
-    def stdout_list(self) -> List[str]:
+    def stdout_list(self) -> list[str]:
         """List of stdout logs."""
         return list(self.stdout_gen)
 
@@ -78,28 +79,28 @@ class LogWatcher(KoiledModel):
     """A class to watch logs from a Docker container."""
 
     cli_bearer: CLIBearer
-    tail: Optional[int] = None
+    tail: int | None = None
     follow: bool = True
     no_log_prefix: bool = False
     timestamps: bool = False
-    since: Optional[str] = None
-    until: Optional[str] = None
+    since: str | None = None
+    until: str | None = None
     stream: bool = True
-    services: Union[str, List[str]] = []
+    services: str | list[str] = []
     wait_for_first_log: bool = True
     wait_for_first_log_timeout: float = 10.0
     wait_for_logs: bool = False
     wait_for_logs_timeout: int = 10
     collected_logs: LogRoll = Field(default_factory=LogRoll)
-    log_function: Optional[LogFunction] = None
+    log_function: LogFunction | None = None
     append_to_traceback: bool = True
     capture_stdout: bool = True
     rich_traceback: bool = True
 
-    _watch_task: Optional[asyncio.Task[None]] = None
-    _just_one_log: Optional[asyncio.Future[bool]] = None
+    _watch_task: asyncio.Task[None] | None = None
+    _just_one_log: asyncio.Future[bool] | None = None
 
-    async def aon_logs(self, log: Tuple[str, str]) -> None:
+    async def aon_logs(self, log: tuple[str, str]) -> None:
         """Asynchronous function to handle logs."""
         if self.log_function:
             if inspect.iscoroutinefunction(self.log_function):
@@ -161,7 +162,7 @@ class LogWatcher(KoiledModel):
         if self.wait_for_first_log:
             try:
                 await asyncio.wait_for(self._just_one_log, self.wait_for_first_log_timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await self._acancel_watch_task()
                 raise LogWatcherTimeoutError(f"No log line arrived from {self.services or 'any service'} within {self.wait_for_first_log_timeout}s. Pass `wait_for_first_log=False` if the service is expected to be quiet, or raise `wait_for_first_log_timeout`.") from None
             except BaseException:
@@ -229,7 +230,7 @@ class LogWatcher(KoiledModel):
 
             await asyncio.sleep(min(0.05, remaining))
 
-    async def _acancel_watch_task(self) -> Optional[BaseException]:
+    async def _acancel_watch_task(self) -> BaseException | None:
         """Cancel and reap the background watch task, if any.
 
         Returns the exception the task died of, if it failed on its own before
@@ -249,7 +250,7 @@ class LogWatcher(KoiledModel):
             return e
         return None
 
-    async def __aexit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None) -> None:
         """Asynchronous context manager to exit the log watcher.
 
         The watch task (and its ``docker compose logs --follow`` subprocess) is
@@ -264,7 +265,7 @@ class LogWatcher(KoiledModel):
         propagating. Swallowing it would leave the watcher silently collecting
         nothing, which looks like a passing test.
         """
-        watch_error: Optional[BaseException] = None
+        watch_error: BaseException | None = None
         try:
             if exc_type is not None and self.append_to_traceback:
                 new_message = format_log_watcher_message(self, exc_val, rich=self.rich_traceback)

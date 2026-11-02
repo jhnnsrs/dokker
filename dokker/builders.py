@@ -3,7 +3,7 @@ import re
 import uuid
 from .checks import Check
 from .deployment import Deployment, PolicyName
-from typing import List, Literal, Optional, Union
+from typing import Literal
 from dokker.projects.copy import CopyPathProject
 from dokker.projects.local import LocalProject
 from dokker.types import ValidPath
@@ -21,7 +21,7 @@ def _normalize_project_name(name: str) -> str:
     return name or "dokker"
 
 
-def derive_project_name(compose_files: List[ValidPath]) -> str:
+def derive_project_name(compose_files: list[ValidPath]) -> str:
     """Derive a stable compose project name for *compose_files*.
 
     Compose's own default is the parent directory's basename, which means two
@@ -47,8 +47,8 @@ def derive_project_name(compose_files: List[ValidPath]) -> str:
 
 def mirror(
     local_path: ValidPath,
-    health_checks: Optional[List[Check]] = None,
-    project_name: Optional[str] = None,
+    health_checks: list[Check] | None = None,
+    project_name: str | None = None,
     policy: PolicyName = "testing",
 ) -> Deployment:
     """Creates a Mirror Deployment
@@ -95,10 +95,10 @@ def mirror(
 
 
 def local(
-    docker_compose_file: Union[ValidPath, List[ValidPath]],
-    health_checks: Optional[List[Check]] = None,
-    shutdown_timeout: Optional[int] = 4,
-    project_name: Optional[str] = None,
+    docker_compose_file: ValidPath | list[ValidPath],
+    health_checks: list[Check] | None = None,
+    shutdown_timeout: int | None = 4,
+    project_name: str | None = None,
     policy: PolicyName = "local",
 ) -> Deployment:
     """Creates a local deployment.
@@ -150,9 +150,9 @@ def local(
 
 
 def monitoring(
-    docker_compose_file: Union[ValidPath, List[ValidPath]],
-    health_checks: Optional[List[Check]] = None,
-    project_name: Optional[str] = None,
+    docker_compose_file: ValidPath | list[ValidPath],
+    health_checks: list[Check] | None = None,
+    project_name: str | None = None,
     policy: PolicyName = "monitoring",
 ) -> Deployment:
     """Generates a monitoring deployment.
@@ -199,16 +199,16 @@ def monitoring(
 
 
 def testing(
-    docker_compose_file: Union[ValidPath, List[ValidPath]],
-    health_checks: Optional[List[Check]] = None,
-    shutdown_timeout: Optional[int] = 4,
-    teardown_timeout: Optional[float] = 10.0,
-    project_name: Optional[str] = None,
+    docker_compose_file: ValidPath | list[ValidPath],
+    health_checks: list[Check] | None = None,
+    shutdown_timeout: int | None = 4,
+    teardown_timeout: float | None = 10.0,
+    project_name: str | None = None,
     remove_orphans: bool = True,
     remove_volumes: bool = True,
     policy: PolicyName = "testing",
     reap_stale: bool = True,
-    remove_images: Optional[Literal["local", "all"]] = "local",
+    remove_images: Literal["local", "all"] | None = "local",
 ) -> Deployment:
     """Generates a testing deployment.
 

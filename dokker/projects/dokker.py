@@ -1,8 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Union
 from pathlib import Path
 from dokker.cli import CLI
-from typing import Dict, Any, Optional
+from typing import Any
 import logging
 import os
 from dokker.projects.copy import COMPOSE_FILE_NAMES
@@ -10,7 +9,7 @@ from dokker.projects.errors import ProjectError
 
 logger = logging.getLogger(__name__)
 
-ValidPath = Union[str, Path]
+ValidPath = str | Path
 
 
 class DokkerProjectError(ProjectError):
@@ -30,8 +29,8 @@ class DokkerProject(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     base_dir: ValidPath = Field(default_factory=lambda: os.path.join(os.getcwd(), ".dokker"))
     name: str
-    _outs: Optional[Dict[str, Any]] = None
-    _project_dir: Optional[ValidPath] = None
+    _outs: dict[str, Any] | None = None
+    _project_dir: ValidPath | None = None
 
     async def ainititialize(self) -> CLI:
         """A setup method for the project.

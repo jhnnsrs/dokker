@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Protocol, Union, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 from .cli import CLI
 from .types import LogStream
 
@@ -70,17 +70,17 @@ class UpOptions:
     """What a deployment's ``up`` was asked for, handed to a project that starts itself."""
 
     detach: bool = True
-    services: Union[List[str], str, None] = None
+    services: list[str] | str | None = None
     build: bool = False
     wait: bool = False
-    wait_timeout: Optional[int] = None
+    wait_timeout: int | None = None
     force_recreate: bool = False
     no_recreate: bool = False
     no_build: bool = False
     remove_orphans: bool = False
     renew_anon_volumes: bool = False
-    pull: Optional[Literal["always", "missing", "never"]] = None
-    scales: Dict[str, int] = field(default_factory=dict)
+    pull: Literal["always", "missing", "never"] | None = None
+    scales: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -92,17 +92,17 @@ class DownOptions:
     says whether the caller asked for it.
     """
 
-    timeout: Optional[int] = None
+    timeout: int | None = None
     volumes: bool = False
     remove_orphans: bool = False
-    remove_images: Optional[Literal["local", "all"]] = None
+    remove_images: Literal["local", "all"] | None = None
 
 
 @dataclass(frozen=True)
 class PullOptions:
     """What a deployment's ``pull`` was asked for, handed to a project that pulls itself."""
 
-    services: Union[List[str], str, None] = None
+    services: list[str] | str | None = None
     ignore_pull_failures: bool = False
     include_deps: bool = False
     quiet: bool = False
@@ -130,7 +130,7 @@ class StartsItself(Protocol):
 class StopsItself(Protocol):
     """A project that stops its own stack, instead of ``docker compose stop``."""
 
-    def astream_stop(self, cli: CLI, timeout: Optional[int]) -> LogStream:
+    def astream_stop(self, cli: CLI, timeout: int | None) -> LogStream:
         """Stop the stack, yielding ``(stream, line)`` as it goes."""
         ...
 

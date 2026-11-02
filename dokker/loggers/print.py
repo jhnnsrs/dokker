@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Callable
+from collections.abc import Callable
 
 LogTuple = tuple[str, str]
 

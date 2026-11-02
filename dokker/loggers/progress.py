@@ -33,9 +33,10 @@ import shutil
 import sys
 import threading
 import time
-from typing import Callable, Dict, List, Optional, TextIO, Tuple
+from typing import TextIO
+from collections.abc import Callable
 
-LogTuple = Tuple[str, str]
+LogTuple = tuple[str, str]
 
 #: The resource kinds compose prefixes its progress lines with. Anything else in
 #: leading position is a layer id (`17a39c0ba978 Downloading 48.48kB`), which is
@@ -45,7 +46,7 @@ RESOURCE_TYPES = frozenset({"Image", "Container", "Network", "Volume"})
 
 #: Which resource kind is the meaningful unit of work for a given phase. During
 #: a pull there are no containers yet, so images are what there is to count.
-TRACKED_TYPE: Dict[str, str] = {
+TRACKED_TYPE: dict[str, str] = {
     "pull": "Image",
     "build": "Image",
 }
@@ -54,7 +55,7 @@ DEFAULT_TRACKED_TYPE = "Container"
 #: Per-phase terminal statuses, used for the ``[done/total]`` fraction. Only the
 #: end state of *that* operation counts: `Created` means nothing during `up`,
 #: where the container still has to start and possibly pass a healthcheck.
-TERMINAL_STATUSES: Dict[str, frozenset[str]] = {
+TERMINAL_STATUSES: dict[str, frozenset[str]] = {
     "pull": frozenset({"Pulled", "Error", "Skipped", "Warning"}),
     "build": frozenset({"Built", "Error", "Skipped", "Warning"}),
     "up": frozenset({"Healthy", "Running", "Started", "Error", "Skipped"}),
@@ -83,7 +84,7 @@ class ProgressEvent:
 
     __slots__ = ("resource_type", "name", "status")
 
-    def __init__(self, resource_type: Optional[str], name: str, status: str) -> None:
+    def __init__(self, resource_type: str | None, name: str, status: str) -> None:
         """Store the three parsed fields."""
         self.resource_type = resource_type
         self.name = name
@@ -105,7 +106,7 @@ def strip_ansi(line: str) -> str:
     return _ANSI_RE.sub("", line)
 
 
-def parse_compose_progress(line: str) -> Optional[ProgressEvent]:
+def parse_compose_progress(line: str) -> ProgressEvent | None:
     """Parse one line of compose progress output.
 
     Handles the two shapes compose emits::
@@ -166,12 +167,12 @@ class ProgressLogger:
     def __init__(
         self,
         *,
-        writer: Optional[TextIO] = None,
+        writer: TextIO | None = None,
         label: str = "dokker",
         interval: float = 0.1,
         ascii_only: bool = False,
         now: Callable[[], float] = time.monotonic,
-        width: Optional[int] = None,
+        width: int | None = None,
     ) -> None:
         """Configure the renderer.
 
@@ -201,15 +202,15 @@ class ProgressLogger:
         self._width = width
 
         self._lock = threading.Lock()
-        self._state: Dict[Tuple[Optional[str], str], str] = {}
-        self._settled: set[Tuple[Optional[str], str]] = set()
-        self._detail: Optional[str] = None
+        self._state: dict[tuple[str | None, str], str] = {}
+        self._settled: set[tuple[str | None, str]] = set()
+        self._detail: str | None = None
         self._phase: str = ""
         self._phase_started: float = now()
         self._tick = 0
         self._drawn = False
 
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
     # ------------------------------------------------------------------
@@ -313,7 +314,7 @@ class ProgressLogger:
         """The resource kind that counts as a unit of work in this phase."""
         return TRACKED_TYPE.get(self._phase, DEFAULT_TRACKED_TYPE)
 
-    def _rows(self) -> List[Tuple[str, str, bool]]:
+    def _rows(self) -> list[tuple[str, str, bool]]:
         """Tracked resources as `(name, status, settled)`, unsettled first.
 
         Caller must hold the lock.

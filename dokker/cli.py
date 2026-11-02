@@ -1,13 +1,8 @@
 from typing import (
     Any,
     cast,
-    Optional,
-    List,
-    Tuple,
-    Union,
     Protocol,
     runtime_checkable,
-    Dict,
     Literal,
 )
 from pydantic import Field, field_validator
@@ -28,7 +23,7 @@ class CLIError(DokkerError):
     pass
 
 
-def _split_command(command: str) -> List[str]:
+def _split_command(command: str) -> list[str]:
     """Split a command string into argv, POSIX-shell style.
 
     Commands are passed to docker as an argument vector, so a string has to be
@@ -40,7 +35,7 @@ def _split_command(command: str) -> List[str]:
     return shlex.split(command)
 
 
-def _parse_compose_json_list(payload: str) -> List[Dict[str, Any]]:
+def _parse_compose_json_list(payload: str) -> list[dict[str, Any]]:
     """Parse `docker compose ps --format json` output into a list of dicts.
 
     Compose has emitted two different shapes for this across versions: a single
@@ -56,7 +51,7 @@ def _parse_compose_json_list(payload: str) -> List[Dict[str, Any]]:
         parsed = json.loads(payload)
     except json.JSONDecodeError:
         # Not a single document -- try newline-delimited JSON.
-        entries: List[Dict[str, Any]] = []
+        entries: list[dict[str, Any]] = []
         for line in payload.splitlines():
             line = line.strip()
             if not line:
@@ -93,32 +88,32 @@ class CLI(KoiledModel):
 
     """
 
-    config: Optional[ValidPath] = None
-    context: Optional[str] = None
-    debug: Optional[bool] = None
-    host: Optional[str] = None
-    log_level: Optional[str] = None
-    tls: Optional[bool] = None
-    tlscacert: Optional[ValidPath] = None
-    tlscert: Optional[ValidPath] = None
-    tlskey: Optional[ValidPath] = None
-    tlsverify: Optional[bool] = None
-    compose_files: List[ValidPath] = Field(default_factory=lambda: cast(List[ValidPath], ["docker-compose.yml"]))
-    compose_profiles: List[str] = Field(default_factory=lambda: [], description="Compose profiles to activate (`--profile`).")
+    config: ValidPath | None = None
+    context: str | None = None
+    debug: bool | None = None
+    host: str | None = None
+    log_level: str | None = None
+    tls: bool | None = None
+    tlscacert: ValidPath | None = None
+    tlscert: ValidPath | None = None
+    tlskey: ValidPath | None = None
+    tlsverify: bool | None = None
+    compose_files: list[ValidPath] = Field(default_factory=lambda: cast(list[ValidPath], ["docker-compose.yml"]))
+    compose_profiles: list[str] = Field(default_factory=lambda: [], description="Compose profiles to activate (`--profile`).")
     # No default: passing `--env-file .env` unconditionally makes compose fail on
     # every project that does not happen to ship one.
-    compose_env_file: Optional[ValidPath] = Field(default=None, description="Path to an env file to pass as `--env-file`.")
-    compose_project_name: Optional[str] = None
-    compose_project_directory: Optional[ValidPath] = None
-    compose_compatibility: Optional[bool] = None
-    client_call: List[str] = Field(default_factory=lambda: ["docker", "compose"])
-    env: Optional[Dict[str, str]] = Field(
+    compose_env_file: ValidPath | None = Field(default=None, description="Path to an env file to pass as `--env-file`.")
+    compose_project_name: str | None = None
+    compose_project_directory: ValidPath | None = None
+    compose_compatibility: bool | None = None
+    client_call: list[str] = Field(default_factory=lambda: ["docker", "compose"])
+    env: dict[str, str] | None = Field(
         default=None,
         description="Extra environment variables for every docker command, merged over the parent environment. Compose interpolates these into the compose file, so this is how you parameterise a stack (image tags, ports, credentials) per deployment.",
     )
 
     @field_validator("compose_files")
-    def _validate_compose_files(cls, v: List[ValidPath]) -> List[ValidPath]:
+    def _validate_compose_files(cls, v: list[ValidPath]) -> list[ValidPath]:
         x: list[ValidPath] = []
         for vo in v:
             if os.path.exists(vo):
@@ -131,7 +126,7 @@ class CLI(KoiledModel):
         return x
 
     @property
-    def docker_cmd(self) -> List[str]:
+    def docker_cmd(self) -> list[str]:
         """Builds the docker command. This is the base prepended
         command that will be run by the CLI.
         """
@@ -190,7 +185,7 @@ class CLI(KoiledModel):
 
         return result
 
-    async def _astream(self, full_cmd: List[str]) -> LogStream:
+    async def _astream(self, full_cmd: list[str]) -> LogStream:
         """Run a docker command, preflighting that docker is actually usable.
 
         Every `astream_*` method goes through here so that "docker is not
@@ -206,13 +201,13 @@ class CLI(KoiledModel):
 
     async def astream_docker_logs(
         self,
-        tail: Optional[str] = None,
+        tail: str | None = None,
         follow: bool = False,
         no_log_prefix: bool = False,
         timestamps: bool = False,
-        since: Optional[str] = None,
-        until: Optional[str] = None,
-        services: Union[str, List[str]] = [],
+        since: str | None = None,
+        until: str | None = None,
+        services: str | list[str] = [],
     ) -> LogStream:
         """Runs the docker logs command asynchronously."""
         full_cmd = self.docker_cmd + ["logs", "--no-color"]
@@ -240,8 +235,8 @@ class CLI(KoiledModel):
     async def astream_down(
         self,
         remove_orphans: bool = False,
-        remove_images: Optional[str] = None,
-        timeout: Optional[int] = None,
+        remove_images: str | None = None,
+        timeout: int | None = None,
         volumes: bool = False,
     ) -> LogStream:
         """Runs the docker-compose down command asynchronously."""
@@ -260,7 +255,7 @@ class CLI(KoiledModel):
 
     async def astream_pull(
         self,
-        services: Union[List[str], str, None] = None,
+        services: list[str] | str | None = None,
         ignore_pull_failures: bool = False,
         include_deps: bool = False,
         quiet: bool = False,
@@ -284,8 +279,8 @@ class CLI(KoiledModel):
 
     async def astream_stop(
         self,
-        services: Union[str, List[str], None] = None,
-        timeout: Union[int, timedelta, None] = None,
+        services: str | list[str] | None = None,
+        timeout: int | timedelta | None = None,
     ) -> LogStream:
         """Runs the docker-compose stop command asynchronously."""
         full_cmd = self.docker_cmd + ["stop"]
@@ -305,7 +300,7 @@ class CLI(KoiledModel):
 
     async def astream_restart(
         self,
-        services: Union[str, List[str], None] = None,
+        services: str | list[str] | None = None,
     ) -> LogStream:
         """Runs the docker-compose restart command asynchronously."""
         full_cmd = self.docker_cmd + ["restart"]
@@ -320,11 +315,11 @@ class CLI(KoiledModel):
 
     async def astream_up(
         self,
-        services: Union[List[str], str, None] = None,
+        services: list[str] | str | None = None,
         build: bool = False,
         detach: bool = False,
         abort_on_container_exit: bool = False,
-        scales: Dict[str, int] = {},
+        scales: dict[str, int] = {},
         attach_dependencies: bool = False,
         force_recreate: bool = False,
         no_recreate: bool = False,
@@ -336,8 +331,8 @@ class CLI(KoiledModel):
         no_start: bool = False,
         quiet: bool = False,
         wait: bool = False,
-        wait_timeout: Optional[int] = None,
-        no_attach_services: Union[List[str], str, None] = None,
+        wait_timeout: int | None = None,
+        no_attach_services: list[str] | str | None = None,
         pull: Literal["always", "missing", "never", None] = None,
         stream_logs: bool = False,
     ) -> LogStream:
@@ -398,13 +393,13 @@ class CLI(KoiledModel):
     async def astream_run(
         self,
         service: str,
-        command: List[str] | str,
+        command: list[str] | str,
         remove: bool = True,
         no_deps: bool = False,
-        env: Optional[Dict[str, str]] = None,
-        workdir: Optional[ValidPath] = None,
-        user: Optional[str] = None,
-        entrypoint: Optional[str] = None,
+        env: dict[str, str] | None = None,
+        workdir: ValidPath | None = None,
+        user: str | None = None,
+        entrypoint: str | None = None,
         tty: bool = False,
         quiet_pull: bool = True,
     ) -> LogStream:
@@ -456,12 +451,12 @@ class CLI(KoiledModel):
     async def astream_exec(
         self,
         service: str,
-        command: List[str] | str,
-        env: Optional[Dict[str, str]] = None,
-        workdir: Optional[ValidPath] = None,
-        user: Optional[str] = None,
+        command: list[str] | str,
+        env: dict[str, str] | None = None,
+        workdir: ValidPath | None = None,
+        user: str | None = None,
         privileged: bool = False,
-        index: Optional[int] = None,
+        index: int | None = None,
         tty: bool = False,
     ) -> LogStream:
         """Runs a command inside an already-running container (`compose exec`).
@@ -499,11 +494,11 @@ class CLI(KoiledModel):
 
     async def astream_build(
         self,
-        services: Union[List[str], str, None] = None,
+        services: list[str] | str | None = None,
         no_cache: bool = False,
         pull: bool = False,
         quiet: bool = False,
-        build_args: Optional[Dict[str, str]] = None,
+        build_args: dict[str, str] | None = None,
     ) -> LogStream:
         """Runs the docker-compose build command asynchronously."""
         full_cmd = self.docker_cmd + ["build"]
@@ -526,8 +521,8 @@ class CLI(KoiledModel):
 
     async def astream_kill(
         self,
-        services: Union[List[str], str, None] = None,
-        signal: Optional[str] = None,
+        services: list[str] | str | None = None,
+        signal: str | None = None,
     ) -> LogStream:
         """Runs the docker-compose kill command asynchronously.
 
@@ -556,7 +551,7 @@ class CLI(KoiledModel):
         async for line in self._astream(full_cmd):
             yield line
 
-    async def _acollect_stdout(self, full_cmd: List[str]) -> str:
+    async def _acollect_stdout(self, full_cmd: list[str]) -> str:
         """Run a command and return its stdout, discarding stderr."""
         stdout_lines: list[str] = []
         async for source, line in self._astream(full_cmd):
@@ -569,8 +564,8 @@ class CLI(KoiledModel):
         service: str,
         private_port: int,
         protocol: str = "tcp",
-        index: Optional[int] = None,
-    ) -> Tuple[str, int]:
+        index: int | None = None,
+    ) -> tuple[str, int]:
         """Resolve the host address a service's container port is published on.
 
         This asks the *running* stack, which is the only way to learn a
@@ -622,9 +617,9 @@ class CLI(KoiledModel):
 
     async def aps(
         self,
-        services: Optional[List[str]] = None,
+        services: list[str] | None = None,
         all: bool = False,
-    ) -> List[ContainerStatus]:
+    ) -> list[ContainerStatus]:
         """List the project's containers and their runtime state.
 
         Parameters
@@ -658,7 +653,7 @@ class CLI(KoiledModel):
         except Exception as e:
             raise CLIError(f"Could not parse the output of `docker compose ps`: {result}") from e
 
-    async def areap_stale(self) -> List[str]:
+    async def areap_stale(self) -> list[str]:
         """Remove the stacks left behind by dead dokker processes on this host.
 
         Delegates to :func:`dokker.ownership.areap_stale` with this CLI's
@@ -674,7 +669,7 @@ class CLI(KoiledModel):
 
         return await areap_stale(client_call=list(self.client_call), env=self.env)
 
-    async def aconfig_services(self) -> List[str]:
+    async def aconfig_services(self) -> list[str]:
         """List the service names the compose files resolve to.
 
         This is `docker compose config --services`: the merged view of all

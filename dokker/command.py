@@ -3,7 +3,6 @@ import os
 import shlex
 import shutil
 import signal
-from typing import Dict, List, Optional, Union
 from dokker.types import LogStream
 from dokker.errors import DockerNotAvailableError, DokkerError
 
@@ -17,10 +16,10 @@ PREFLIGHT_TIMEOUT = 20.0
 
 # Cached preflight result. Checking costs a subprocess round-trip, and the
 # answer does not change within a test session.
-_docker_available: Optional[bool] = None
+_docker_available: bool | None = None
 
 
-async def acheck_docker_available(client_call: Optional[List[str]] = None) -> None:
+async def acheck_docker_available(client_call: list[str] | None = None) -> None:
     """Verify that the docker CLI exists and its daemon is reachable.
 
     Without this, the two most likely first failures of any dokker run -- docker
@@ -59,7 +58,7 @@ async def acheck_docker_available(client_call: Optional[List[str]] = None) -> No
 
     try:
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=PREFLIGHT_TIMEOUT)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         _kill_process_group(proc)
         raise DockerNotAvailableError(f"`{binary} version` did not respond within {PREFLIGHT_TIMEOUT}s. The Docker daemon appears to be unresponsive.") from None
 
@@ -70,7 +69,7 @@ async def acheck_docker_available(client_call: Optional[List[str]] = None) -> No
     _docker_available = True
 
 
-async def ais_docker_available(client_call: Optional[List[str]] = None) -> bool:
+async def ais_docker_available(client_call: list[str] | None = None) -> bool:
     """Return whether docker is installed and its daemon reachable.
 
     The non-raising counterpart of :func:`acheck_docker_available`, for callers
@@ -96,24 +95,24 @@ class CommandError(DokkerError):
     def __init__(
         self,
         message: str,
-        command: Optional[str] = None,
-        returncode: Optional[int] = None,
-        stdout: Optional[List[str]] = None,
-        stderr: Optional[List[str]] = None,
+        command: str | None = None,
+        returncode: int | None = None,
+        stdout: list[str] | None = None,
+        stderr: list[str] | None = None,
     ) -> None:
         """Create a CommandError carrying the failed command's streams."""
         self.command = command
         self.returncode = returncode
-        self.stdout: List[str] = stdout if stdout is not None else []
-        self.stderr: List[str] = stderr if stderr is not None else []
+        self.stdout: list[str] = stdout if stdout is not None else []
+        self.stderr: list[str] = stderr if stderr is not None else []
         super().__init__(message)
 
 
 def _format_command_error(
     command: str,
-    returncode: Optional[int],
-    stdout: List[str],
-    stderr: List[str],
+    returncode: int | None,
+    stdout: list[str],
+    stderr: list[str],
 ) -> str:
     """Build a human readable error message for a failed command.
 
@@ -158,7 +157,7 @@ def _kill_process_group(proc: "asyncio.subprocess.Process") -> None:
 
 async def _aread_stream(
     stream: asyncio.StreamReader,
-    queue: asyncio.Queue[Union[tuple[str, str], None]],
+    queue: asyncio.Queue[tuple[str, str] | None],
     name: str,
 ) -> None:
     """Asynchronously read a stream and put lines into a queue."""
@@ -168,7 +167,7 @@ async def _aread_stream(
     await queue.put(None)
 
 
-async def astream_command(command: List[str], env: Optional[Dict[str, str]] = None, cwd: Optional[str] = None) -> LogStream:
+async def astream_command(command: list[str], env: dict[str, str] | None = None, cwd: str | None = None) -> LogStream:
     """Asynchronously stream the output of a command.
 
     The command is executed directly, not through a shell. Joining an argument
@@ -218,7 +217,7 @@ async def astream_command(command: List[str], env: Optional[Dict[str, str]] = No
         raise CommandError(f"Failed to start command `{full_cmd}`: {e}") from e
 
     # Use a queue to stream both stdout and stderr sequentially
-    queue: asyncio.Queue[Union[tuple[str, str], None]] = asyncio.Queue()
+    queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
 
     if proc.stdout is None or proc.stderr is None:
         raise CommandError(f"Failed to get stdout or stderr from subprocess {command}")
@@ -285,7 +284,7 @@ async def astream_command(command: List[str], env: Optional[Dict[str, str]] = No
         _kill_process_group(proc)
         try:
             await asyncio.wait_for(proc.wait(), timeout=KILL_TIMEOUT)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
         raise

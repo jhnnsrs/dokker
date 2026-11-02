@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
 import os
-from typing import Optional
 import shutil
 from dokker.cli import CLI
 from dokker.projects.errors import ProjectError
@@ -20,7 +19,7 @@ class CopyPathProject(BaseModel):
     """
 
     project_path: ValidPath
-    project_name: Optional[str] = None
+    project_name: str | None = None
     base_dir: str = Field(default_factory=lambda: os.path.join(os.getcwd(), ".dokker"))
     overwrite: bool = False
 

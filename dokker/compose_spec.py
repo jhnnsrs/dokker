@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-from typing_extensions import Annotated
+from typing import Annotated
 
 from dokker.errors import LabelNotFoundError, PortNotFoundError, ServiceNotFoundError
 
@@ -10,97 +10,97 @@ from dokker.errors import LabelNotFoundError, PortNotFoundError, ServiceNotFound
 class ServicePlacement(BaseModel):
     """Service placement constraints."""
 
-    constraints: Optional[List[str]] = None
+    constraints: list[str] | None = None
 
 
 class ResourcesLimits(BaseModel):
     """Resource limits for a service."""
 
-    cpus: Optional[float] = None
-    memory: Optional[int] = None
+    cpus: float | None = None
+    memory: int | None = None
 
 
 class ResourcesReservation(BaseModel):
     """Resource reservations for a service."""
 
-    cpus: Union[float, int, None] = None
-    memory: Optional[int] = None
+    cpus: float | int | None = None
+    memory: int | None = None
 
 
 class ServiceResources(BaseModel):
     """Resource configuration for a service."""
 
-    limits: Optional[ResourcesLimits] = None
-    reservations: Optional[ResourcesReservation] = None
+    limits: ResourcesLimits | None = None
+    reservations: ResourcesReservation | None = None
 
 
 class ServiceDeployConfig(BaseModel):
     """Service deployment configuration."""
 
-    labels: Optional[Dict[str, str]] = None
-    resources: Optional[ServiceResources] = None
-    placement: Optional[ServicePlacement] = None
-    replicas: Optional[int] = None
+    labels: dict[str, str] | None = None
+    resources: ServiceResources | None = None
+    placement: ServicePlacement | None = None
+    replicas: int | None = None
 
 
 class DependencyCondition(BaseModel):
     """Dependency condition for a service."""
 
-    condition: Optional[str] = None
+    condition: str | None = None
 
 
 class ComposeServiceBuild(BaseModel):
     """Build configuration for a service."""
 
-    context: Optional[Path] = None
-    dockerfile: Optional[Path] = None
-    args: Optional[Dict[str, Any]] = None
-    labels: Optional[Dict[str, Any]] = None
+    context: Path | None = None
+    dockerfile: Path | None = None
+    args: dict[str, Any] | None = None
+    labels: dict[str, Any] | None = None
 
 
 class ComposeServicePort(BaseModel):
     """Port configuration for a service."""
 
-    mode: Optional[str] = None
-    protocol: Optional[str] = None
-    published: Optional[int] = None
-    target: Optional[int] = None
+    mode: str | None = None
+    protocol: str | None = None
+    published: int | None = None
+    target: int | None = None
 
 
 class ComposeServiceVolume(BaseModel):
     """Volume configuration for a service."""
 
-    bind: Optional[dict[str, Any]] = None
-    source: Optional[str] = None
-    target: Optional[str] = None
-    type: Optional[str] = None
+    bind: dict[str, Any] | None = None
+    source: str | None = None
+    target: str | None = None
+    type: str | None = None
 
 
 class ComposeConfigService(BaseModel):
     """Service configuration for a Docker Compose file."""
 
-    deploy: Optional[ServiceDeployConfig] = None
-    blkio_config: Optional[Any] = None
-    cpu_count: Optional[float] = None
-    cpu_percent: Optional[float] = None
-    cpu_shares: Optional[int] = None
-    cpuset: Optional[str] = None
-    build: Optional[ComposeServiceBuild] = None
-    cap_add: Annotated[Optional[List[str]], Field(default_factory=list)]
-    cap_drop: Annotated[Optional[List[str]], Field(default_factory=list)]
-    cgroup_parent: Optional[str] = None
-    command: Optional[List[str]] = None
+    deploy: ServiceDeployConfig | None = None
+    blkio_config: Any | None = None
+    cpu_count: float | None = None
+    cpu_percent: float | None = None
+    cpu_shares: int | None = None
+    cpuset: str | None = None
+    build: ComposeServiceBuild | None = None
+    cap_add: Annotated[list[str] | None, Field(default_factory=list)]
+    cap_drop: Annotated[list[str] | None, Field(default_factory=list)]
+    cgroup_parent: str | None = None
+    command: list[str] | None = None
     configs: Any = None
-    container_name: Optional[str] = None
-    depends_on: Annotated[Dict[str, DependencyCondition], Field(default_factory=dict)]
-    device_cgroup_rules: Annotated[List[str], Field(default_factory=list)]
+    container_name: str | None = None
+    depends_on: Annotated[dict[str, DependencyCondition], Field(default_factory=dict)]
+    device_cgroup_rules: Annotated[list[str], Field(default_factory=list)]
     devices: Any = None
-    environment: Optional[Dict[str, Optional[str]]] = None
-    entrypoint: Optional[List[str]] = None
-    image: Optional[str] = None
-    labels: Annotated[Optional[Dict[str, str]], Field(default_factory=dict)]
-    ports: Optional[List[ComposeServicePort]] = None
-    volumes: Optional[List[ComposeServiceVolume]] = None
+    environment: dict[str, str | None] | None = None
+    entrypoint: list[str] | None = None
+    image: str | None = None
+    labels: Annotated[dict[str, str] | None, Field(default_factory=dict)]
+    ports: list[ComposeServicePort] | None = None
+    volumes: list[ComposeServiceVolume] | None = None
 
     def get_label(self, label: str) -> str:
         """Get the label of the service.
@@ -151,25 +151,25 @@ class ComposeConfigService(BaseModel):
 class ComposeConfigNetwork(BaseModel):
     """Network configuration for a Docker Compose file."""
 
-    driver: Optional[str] = None
-    name: Optional[str] = None
-    external: Optional[bool] = False
-    driver_opts: Optional[Dict[str, Any]] = None
-    attachable: Optional[bool] = None
-    enable_ipv6: Optional[bool] = None
+    driver: str | None = None
+    name: str | None = None
+    external: bool | None = False
+    driver_opts: dict[str, Any] | None = None
+    attachable: bool | None = None
+    enable_ipv6: bool | None = None
     ipam: Any = None
-    internal: Optional[bool] = None
-    labels: Annotated[Dict[str, str], Field(default_factory=dict)]
+    internal: bool | None = None
+    labels: Annotated[dict[str, str], Field(default_factory=dict)]
 
 
 class ComposeConfigVolume(BaseModel):
     """Volume configuration for a Docker Compose file."""
 
-    driver: Optional[str] = None
-    driver_opts: Optional[Dict[str, Any]] = None
-    external: Optional[bool] = None
-    labels: Annotated[Optional[Dict[str, str]], Field(default_factory=dict)]
-    name: Optional[str] = None
+    driver: str | None = None
+    driver_opts: dict[str, Any] | None = None
+    external: bool | None = None
+    labels: Annotated[dict[str, str] | None, Field(default_factory=dict)]
+    name: str | None = None
 
 
 class ContainerPublisher(BaseModel):
@@ -177,10 +177,10 @@ class ContainerPublisher(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    url: Optional[str] = Field(default=None, alias="URL")
-    target_port: Optional[int] = Field(default=None, alias="TargetPort")
-    published_port: Optional[int] = Field(default=None, alias="PublishedPort")
-    protocol: Optional[str] = Field(default=None, alias="Protocol")
+    url: str | None = Field(default=None, alias="URL")
+    target_port: int | None = Field(default=None, alias="TargetPort")
+    published_port: int | None = Field(default=None, alias="PublishedPort")
+    protocol: str | None = Field(default=None, alias="Protocol")
 
 
 class ContainerStatus(BaseModel):
@@ -200,9 +200,9 @@ class ContainerStatus(BaseModel):
     service: str = Field(alias="Service")
     state: str = Field(default="", alias="State", description="e.g. `running`, `exited`, `created`.")
     health: str = Field(default="", alias="Health", description="Docker's healthcheck verdict: `healthy`, `unhealthy`, `starting`, or empty when the service declares no healthcheck.")
-    exit_code: Optional[int] = Field(default=None, alias="ExitCode")
-    image: Optional[str] = Field(default=None, alias="Image")
-    publishers: List[ContainerPublisher] = Field(default_factory=list, alias="Publishers")
+    exit_code: int | None = Field(default=None, alias="ExitCode")
+    image: str | None = Field(default=None, alias="Image")
+    publishers: list[ContainerPublisher] = Field(default_factory=list, alias="Publishers")
 
     @property
     def is_running(self) -> bool:
@@ -224,13 +224,13 @@ class ContainerStatus(BaseModel):
 class ComposeSpec(BaseModel):
     """Docker Compose specification."""
 
-    services: Optional[Dict[str, ComposeConfigService]] = None
-    networks: Annotated[Optional[Dict[str, ComposeConfigNetwork]], Field(default_factory=dict)]
-    volumes: Annotated[Optional[Dict[str, ComposeConfigVolume]], Field(default_factory=dict)]
+    services: dict[str, ComposeConfigService] | None = None
+    networks: Annotated[dict[str, ComposeConfigNetwork] | None, Field(default_factory=dict)]
+    volumes: Annotated[dict[str, ComposeConfigVolume] | None, Field(default_factory=dict)]
     configs: Any = None
     secrets: Any = None
 
-    def find_service(self, name: Optional[str] = None) -> ComposeConfigService:
+    def find_service(self, name: str | None = None) -> ComposeConfigService:
         """Find a service by name.
 
         Parameters

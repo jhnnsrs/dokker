@@ -1,6 +1,6 @@
-from typing import Callable, Union, AsyncIterator, Tuple, Awaitable
+from collections.abc import Callable, AsyncIterator, Awaitable
 from pathlib import Path
 
-ValidPath = Union[str, Path]
-LogStream = AsyncIterator[Tuple[str, str]]
-LogFunction = Union[Callable[[Tuple[str, str]], Awaitable[None]], Callable[[Tuple[str, str]], None]]
+ValidPath = str | Path
+LogStream = AsyncIterator[tuple[str, str]]
+LogFunction = Callable[[tuple[str, str]], Awaitable[None]] | Callable[[tuple[str, str]], None]

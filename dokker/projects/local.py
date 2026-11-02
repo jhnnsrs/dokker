@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Union, cast
+from typing import cast
 from pathlib import Path
 from dokker.cli import CLI
 import logging
@@ -7,7 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-ValidPath = Union[str, Path]
+ValidPath = str | Path
 
 
 class LocalProject(BaseModel):
@@ -18,8 +18,8 @@ class LocalProject(BaseModel):
     interfering with the docker project on tear-down.
     """
 
-    compose_files: List[ValidPath] = Field(default_factory=lambda: cast(List[ValidPath], ["docker-compose.yml"]))
-    project_name: Optional[str] = None
+    compose_files: list[ValidPath] = Field(default_factory=lambda: cast(list[ValidPath], ["docker-compose.yml"]))
+    project_name: str | None = None
 
     async def ainititialize(self) -> CLI:
         """A setup method for the project.

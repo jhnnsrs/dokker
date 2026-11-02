@@ -17,7 +17,7 @@ container introspection.
 
 import asyncio
 import re
-from typing import List, Optional, Protocol, Union, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -91,7 +91,7 @@ class TcpCheck(BaseCheck):
                 asyncio.open_connection(host, published),
                 timeout=self.connect_timeout,
             )
-        except (OSError, asyncio.TimeoutError) as e:
+        except (TimeoutError, OSError) as e:
             raise HealthCheckError(f"TCP check for service `{self.service}` could not connect to {host}:{published} (container port {self.port}): {e}") from e
 
         writer.close()
@@ -112,7 +112,7 @@ class CommandCheck(BaseCheck):
     than a throwaway one.
     """
 
-    command: Union[str, List[str]] = Field(description="The command to run inside the container.")
+    command: str | list[str] = Field(description="The command to run inside the container.")
 
     async def aperform(self, ctx: CheckContext) -> None:
         """Run the command in the container and raise unless it exits zero."""
@@ -161,12 +161,12 @@ class LogCheck(BaseCheck):
     """
 
     pattern: str = Field(description="Regular expression searched for in the service's logs.")
-    tail: Optional[int] = Field(default=None, description="Only search the last N lines. None searches all available logs.")
+    tail: int | None = Field(default=None, description="Only search the last N lines. None searches all available logs.")
 
     async def aperform(self, ctx: CheckContext) -> None:
         """Fetch the service's logs and raise unless the pattern is present."""
         regex = re.compile(self.pattern)
-        lines: List[str] = []
+        lines: list[str] = []
 
         async for _, line in ctx.cli.astream_docker_logs(
             tail=str(self.tail) if self.tail else None,

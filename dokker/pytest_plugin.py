@@ -22,7 +22,8 @@ What this adds over writing the fixture by hand:
 import contextlib
 import os
 import sys
-from typing import TYPE_CHECKING, Any, Callable, Generator, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Generator, Iterator
 
 import pytest
 
@@ -194,7 +195,7 @@ def dokker_progress(config: pytest.Config, deployment: Deployment) -> Generator[
     # `auto` has no such shortcut: probing `sys.stdout.isatty()` is only truthful
     # once capture is lifted, so suspension has to come first.
     with _capture_disabled(config) as suspended:
-        renderer: Optional[ProgressLogger] = None
+        renderer: ProgressLogger | None = None
         if _progress_enabled(config) and suspended:
             renderer = ProgressLogger(label=getattr(deployment.project, "project_name", None) or "dokker")
             deployment.logger = renderer
@@ -223,7 +224,7 @@ def _needs_docker(item: pytest.Item) -> bool:
     return bool(DOKKER_FIXTURES & set(getattr(item, "fixturenames", ())))
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: List[pytest.Item]) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Skip docker-dependent tests when no daemon is reachable.
 
     Done at collection rather than in an autouse fixture, because a
@@ -291,11 +292,11 @@ def dokker_deployment(request: pytest.FixtureRequest) -> Iterator[Callable[..., 
     no_pull = bool(config.getoption("--dokker-no-pull"))
     log = bool(config.getoption("--dokker-log"))
 
-    started: List[Deployment] = []
+    started: list[Deployment] = []
 
     def _factory(
         compose_file: ValidPath,
-        health_checks: Optional[List["Check"]] = None,
+        health_checks: list["Check"] | None = None,
         wait: bool = False,
         **kwargs: Any,
     ) -> Deployment:

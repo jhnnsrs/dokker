@@ -77,8 +77,8 @@ exclude = [
 line-length = 300
 
 [tool.ruff.lint]
-extend-select = ["ANN", "D1"]
-extend-ignore = ["ANN002", "ANN003", "D100", "ANN401"]
+extend-select = ["ANN", "D1", "UP"]
+extend-ignore = ["ANN002", "ANN003", "D100", "ANN401", "UP037", "UP038", "UP042"]
 
 [[tool.pydoc-markdown.loaders]]
 type = "python"

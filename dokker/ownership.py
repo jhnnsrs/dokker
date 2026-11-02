@@ -41,8 +41,8 @@ import shutil
 import socket
 import sys
 import tempfile
-from datetime import datetime, timezone
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence
+from datetime import datetime, timezone, UTC
+from collections.abc import Iterable, Mapping, Sequence
 
 from koil import unkoil
 from koil.errors import KoilError
@@ -59,7 +59,7 @@ COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 OWNER_LABELS = (OWNER_PID_LABEL, OWNER_HOST_LABEL, OWNER_START_LABEL)
 
 
-def process_start_marker(pid: int) -> Optional[str]:
+def process_start_marker(pid: int) -> str | None:
     """Return an opaque marker that changes whenever *pid* is reused.
 
     A PID alone is a weak identity: after the owner exits the kernel may hand
@@ -71,7 +71,7 @@ def process_start_marker(pid: int) -> Optional[str]:
     if not sys.platform.startswith("linux"):
         return None
     try:
-        with open(f"/proc/{pid}/stat", "r", encoding="ascii", errors="replace") as f:
+        with open(f"/proc/{pid}/stat", encoding="ascii", errors="replace") as f:
             content = f.read()
     except OSError:
         return None
@@ -84,7 +84,7 @@ def process_start_marker(pid: int) -> Optional[str]:
         return None
 
 
-def owner_labels(pid: Optional[int] = None, hostname: Optional[str] = None) -> Dict[str, str]:
+def owner_labels(pid: int | None = None, hostname: str | None = None) -> dict[str, str]:
     """Labels that record which process promised to tear a stack down.
 
     ``pid`` and ``hostname`` default to the current process and host; tests
@@ -142,7 +142,7 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-def is_owner_alive(labels: Mapping[str, str], hostname: Optional[str] = None) -> bool:
+def is_owner_alive(labels: Mapping[str, str], hostname: str | None = None) -> bool:
     """Decide from a container's labels whether its owning process still runs.
 
     Returns True whenever the answer is uncertain -- a stack recorded by another
@@ -169,7 +169,7 @@ def is_owner_alive(labels: Mapping[str, str], hostname: Optional[str] = None) ->
     return True
 
 
-def write_owner_override(services: Iterable[str], directory: str, labels: Optional[Mapping[str, str]] = None) -> str:
+def write_owner_override(services: Iterable[str], directory: str, labels: Mapping[str, str] | None = None) -> str:
     """Write a compose override file that stamps *labels* onto *services*.
 
     Returns the path of the written file. The override is appended to the
@@ -202,7 +202,7 @@ def write_owner_override(services: Iterable[str], directory: str, labels: Option
 _PS_FORMAT = "\t".join(["{{.ID}}", f'{{{{.Label "{COMPOSE_PROJECT_LABEL}"}}}}', *(f'{{{{.Label "{label}"}}}}' for label in OWNER_LABELS)])
 
 
-async def _acollect(command: List[str], env: Optional[Dict[str, str]] = None, cwd: Optional[str] = None) -> str:
+async def _acollect(command: list[str], env: dict[str, str] | None = None, cwd: str | None = None) -> str:
     stdout: list[str] = []
     async for source, line in astream_command(command, env=env, cwd=cwd):
         if source == "STDOUT":
@@ -210,7 +210,7 @@ async def _acollect(command: List[str], env: Optional[Dict[str, str]] = None, cw
     return "\n".join(stdout)
 
 
-async def alist_owned_stacks(client_call: Optional[List[str]] = None, env: Optional[Dict[str, str]] = None) -> Dict[str, List[Dict[str, str]]]:
+async def alist_owned_stacks(client_call: list[str] | None = None, env: dict[str, str] | None = None) -> dict[str, list[dict[str, str]]]:
     """List every container carrying an owner label, grouped by compose project.
 
     Each entry is the container's label mapping (owner labels plus the compose
@@ -219,7 +219,7 @@ async def alist_owned_stacks(client_call: Optional[List[str]] = None, env: Optio
     """
     docker = (client_call or ["docker"])[0]
     output = await _acollect([docker, "ps", "--all", "--filter", f"label={OWNER_PID_LABEL}", "--format", _PS_FORMAT], env=env)
-    stacks: Dict[str, List[Dict[str, str]]] = {}
+    stacks: dict[str, list[dict[str, str]]] = {}
     for line in output.splitlines():
         if not line.strip():
             continue
@@ -235,14 +235,14 @@ async def alist_owned_stacks(client_call: Optional[List[str]] = None, env: Optio
     return stacks
 
 
-def stale_projects(stacks: Mapping[str, Sequence[Mapping[str, str]]], hostname: Optional[str] = None) -> List[str]:
+def stale_projects(stacks: Mapping[str, Sequence[Mapping[str, str]]], hostname: str | None = None) -> list[str]:
     """Pick the projects from :func:`alist_owned_stacks` whose owners are all gone.
 
     A project is stale only if *every* one of its labelled containers has a
     dead owner; one live owner keeps the whole stack. Containers without a
     project label are skipped (nothing to `down`).
     """
-    stale: List[str] = []
+    stale: list[str] = []
     for project, containers in stacks.items():
         if not project:
             continue
@@ -251,7 +251,7 @@ def stale_projects(stacks: Mapping[str, Sequence[Mapping[str, str]]], hostname: 
     return sorted(stale)
 
 
-async def _aproject_images(project: str, docker: str, env: Optional[Dict[str, str]]) -> List[str]:
+async def _aproject_images(project: str, docker: str, env: dict[str, str] | None) -> list[str]:
     """The images compose built for *project* and named after it (``<project>-<service>``).
 
     Two things say an image is the project's: compose's project label on it, and a
@@ -274,7 +274,7 @@ async def _aproject_images(project: str, docker: str, env: Optional[Dict[str, st
     return sorted({tag for tag in [*labelled, *run] if named_after_project(tag)})
 
 
-async def _aremove_project_images(project: str, tags: List[str], docker: str, env: Optional[Dict[str, str]]) -> List[str]:
+async def _aremove_project_images(project: str, tags: list[str], docker: str, env: dict[str, str] | None) -> list[str]:
     """Remove the images compose built for *project* (see `_aproject_images`); the tags that went."""
     try:
         if tags:
@@ -285,7 +285,7 @@ async def _aremove_project_images(project: str, tags: List[str], docker: str, en
         return []
 
 
-async def _adown_project(project: str, client_call: List[str], env: Optional[Dict[str, str]]) -> None:
+async def _adown_project(project: str, client_call: list[str], env: dict[str, str] | None) -> None:
     """Remove *project* completely, by name alone.
 
     ``docker compose -p <name> down`` needs no compose file: it works from the
@@ -334,7 +334,7 @@ _TESTING_IMAGE_TAG = re.compile(rf"({re.escape(TESTING_PROJECT_PREFIX)}[0-9a-f]{
 ORPHAN_IMAGE_GRACE_SECONDS = 3600.0
 
 
-def _tagged_seconds_ago(last_tag_time: str, now: Optional[datetime] = None) -> Optional[float]:
+def _tagged_seconds_ago(last_tag_time: str, now: datetime | None = None) -> float | None:
     """How long ago docker last tagged an image (``{{json .Metadata.LastTagTime}}``), or None if unknown."""
     stamp = last_tag_time.strip().strip('"')
     if not stamp or stamp.startswith("0001-"):
@@ -352,16 +352,16 @@ def _tagged_seconds_ago(last_tag_time: str, now: Optional[datetime] = None) -> O
     except ValueError:
         return None
     if tagged.tzinfo is None:
-        tagged = tagged.replace(tzinfo=timezone.utc)
-    return ((now or datetime.now(timezone.utc)) - tagged).total_seconds()
+        tagged = tagged.replace(tzinfo=UTC)
+    return ((now or datetime.now(UTC)) - tagged).total_seconds()
 
 
 async def areap_orphan_images(
-    client_call: Optional[List[str]] = None,
-    env: Optional[Dict[str, str]] = None,
+    client_call: list[str] | None = None,
+    env: dict[str, str] | None = None,
     grace: float = ORPHAN_IMAGE_GRACE_SECONDS,
-    projects: Optional[Iterable[str]] = None,
-) -> List[str]:
+    projects: Iterable[str] | None = None,
+) -> list[str]:
     """Remove the images earlier `testing()` runs built and no stack uses any more.
 
     A `testing()` stack has a random project name, and compose names what it builds
@@ -403,7 +403,7 @@ async def areap_orphan_images(
         # it with. The label comes last: it can be empty, and a line is stripped.
         details = (await _acollect([docker, "image", "inspect", "--format", f'{{{{json .Metadata.LastTagTime}}}}\t{{{{index .Config.Labels "{COMPOSE_PROJECT_LABEL}"}}}}', *tags], env=env)).splitlines()
         in_use = set((await _acollect([docker, "ps", "--all", "--format", f'{{{{.Label "{COMPOSE_PROJECT_LABEL}"}}}}'], env=env)).split())
-        orphaned: List[str] = []
+        orphaned: list[str] = []
         for tag, detail in zip(tags, details):
             tagged, _, labelled = detail.strip().partition("\t")
             named = _TESTING_IMAGE_TAG.match(tag)
@@ -419,7 +419,7 @@ async def areap_orphan_images(
             age = _tagged_seconds_ago(tagged)
             if age is not None and age > grace:
                 orphaned.append(tag)
-        removed: List[str] = []
+        removed: list[str] = []
         # Tag by tag: one that another process removed meanwhile must not keep the rest.
         for tag in orphaned:
             try:
@@ -436,7 +436,7 @@ async def areap_orphan_images(
         return []
 
 
-async def areap_stale(client_call: Optional[List[str]] = None, env: Optional[Dict[str, str]] = None) -> List[str]:
+async def areap_stale(client_call: list[str] | None = None, env: dict[str, str] | None = None) -> list[str]:
     """Down every dokker-owned stack whose owning process no longer exists.
 
     Only stacks that dokker itself would have removed at exit are candidates:
@@ -474,7 +474,7 @@ async def areap_stale(client_call: Optional[List[str]] = None, env: Optional[Dic
         logger.warning("Could not list dokker-owned stacks, skipping stale reaping: %s", e)
         return []
 
-    reaped: List[str] = []
+    reaped: list[str] = []
     for project in stale_projects(stacks):
         owner = stacks[project][0].get(OWNER_PID_LABEL, "?")
         logger.info("Reaping stale stack %s: its owner (pid %s on this host) is gone.", project, owner)
@@ -488,7 +488,7 @@ async def areap_stale(client_call: Optional[List[str]] = None, env: Optional[Dic
     return reaped
 
 
-def reap_stale(client_call: Optional[List[str]] = None, env: Optional[Dict[str, str]] = None) -> List[str]:
+def reap_stale(client_call: list[str] | None = None, env: dict[str, str] | None = None) -> list[str]:
     """Synchronous form of :func:`areap_stale`.
 
     Works both inside a koil context (e.g. within a ``with testing(...)`` block)
@@ -501,11 +501,11 @@ def reap_stale(client_call: Optional[List[str]] = None, env: Optional[Dict[str, 
 
 
 def reap_orphan_images(
-    client_call: Optional[List[str]] = None,
-    env: Optional[Dict[str, str]] = None,
+    client_call: list[str] | None = None,
+    env: dict[str, str] | None = None,
     grace: float = ORPHAN_IMAGE_GRACE_SECONDS,
-    projects: Optional[Iterable[str]] = None,
-) -> List[str]:
+    projects: Iterable[str] | None = None,
+) -> list[str]:
     """Synchronous form of :func:`areap_orphan_images`.
 
     Works both inside a koil context and from a plain script or REPL, like
