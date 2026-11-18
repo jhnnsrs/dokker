@@ -41,7 +41,7 @@ import shutil
 import socket
 import sys
 import tempfile
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from collections.abc import Iterable, Mapping, Sequence
 
 from koil import unkoil
