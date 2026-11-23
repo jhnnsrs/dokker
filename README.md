@@ -403,8 +403,13 @@ uv sync                            # install dependencies
 uv run pytest                      # everything (integration tests skip without docker)
 uv run pytest -m "not integration" # unit tests only
 uv run pytest -m integration       # the docker-backed integration tests
-uv run ruff check dokker           # lint
-uv run mypy dokker                 # type check
+uv run ruff check .                # lint (the arkitekt Python standard)
+uv run ruff format .               # format
+uv run basedpyright                # type check, against .basedpyright/baseline.json
 ```
+
+Lint, format and type check follow the shared arkitekt Python standard
+(`ruff.toml` / `pyrightconfig.json` extend the synced `ruff.shared.toml` /
+`pyright.shared.json`) and are all required by the `Quality` workflow.
 
 Integration tests require a running Docker daemon and use small public images (`hashicorp/http-echo`, `redis:7-alpine`, `alpine`) so they run anywhere. Without a daemon they skip rather than fail.
