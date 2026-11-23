@@ -1,6 +1,85 @@
 # CHANGELOG
 
 
+## v2.10.1 (2026-11-23)
+
+### Bug Fixes
+
+- Every argument and return annotated, no Any; bugbear and async findings fixed
+  ([`1b918d6`](https://github.com/jhnnsrs/dokker/commit/1b918d6be98ee72517054dfb56791460040adfcc))
+
+The rest of the arkitekt standard by hand. The package needed little: Self becomes a TypeVar bound
+  to Deployment / LogWatcher, _supports_ansi takes object (it is written to survive anything, and
+  says so where it calls isatty), zip() over the owner labels is strict (the length is checked just
+  above) and over image tags is explicitly not. The mutable defaults of
+  CLI.astream_docker_logs(services=) and astream_up(scales=) are public and only read, so they stay
+  with a noqa. Projects do their one-off local filesystem work inline in their async setup/teardown:
+  ruff.toml ignores ASYNC240 for dokker/projects.
+
+Tests: the fake CLIs and projects carry the signatures of what they stand in for, fixtures and
+  parametrized arguments are typed, and the few asserts on files the code under test wrote keep a
+  noqa. No behaviour change, no public API change: the suite passes (250 passed, docker integration
+  tests included).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+### Build System
+
+- **deps**: Lock koil 3.4.1
+  ([`af477ca`](https://github.com/jhnnsrs/dokker/commit/af477caa90952f9da6e974f7862805bcdcdd6473))
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+
+### Code Style
+
+- Adopt the arkitekt Python standard (ruff format, safe fixes)
+  ([`7e40538`](https://github.com/jhnnsrs/dokker/commit/7e405384e8e6e1b75b43bf7dab8d40da81aed470))
+
+ruff.shared.toml / pyright.shared.json synced from arkitektio/.github; the repo's own settings move
+  to ruff.toml / pyrightconfig.json (the old [tool.ruff] section is gone, and with it the exclusion
+  of tests/); the dev dependencies move from [tool.uv] to the dev group, where ruff and basedpyright
+  are pinned; a new quality.yaml calls the shared python-quality workflow, which replaces the ruff
+  and mypy steps of tests.yaml (mypy leaves the dev group). The code is reformatted (line length 88,
+  as Black) and ruff's safe fixes applied (import order, modern annotations). No behaviour change:
+  the suite passes as before (250 passed, docker integration tests included).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+### Continuous Integration
+
+- Publish only when a release was cut, lint clean, pydantic with Python 3.14 wheels
+  ([`4549ee2`](https://github.com/jhnnsrs/dokker/commit/4549ee2edc8554be79e4b03b13f8132ff9d7ae94))
+
+- release.yaml: uv publish ran on every push and failed whenever the commit cut no release; both
+  publish steps are now guarded on dist/ having files - drop an unused import ruff rejected - lock
+  pydantic 2.14 / pydantic-core 2.50: the locked pydantic-core 2.27 has no wheel for Python 3.14 and
+  cannot be built there
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+
+- The shared quality workflow, required, with a type-check baseline
+  ([`310b7bb`](https://github.com/jhnnsrs/dokker/commit/310b7bb014dbeb3c3f20213e5d17ab084e38b6bc))
+
+.basedpyright/baseline.json holds the 46 errors the repo had when it adopted the standard (all in
+  tests; 45 before it, plus a test fake bearer whose declared FakeCLI is not the CLI the protocol
+  names): CI fails on any other. .git-blame-ignore-revs lists the formatting-only commit; the
+  README's development section describes the standard instead of ruff + mypy.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+### Refactoring
+
+- Adopt Python 3.11 typing (X | None, builtin generics, collections.abc)
+  ([`f8e037f`](https://github.com/jhnnsrs/dokker/commit/f8e037f0736906f81ab7b17cfc57f5ee717ced89))
+
+Rewrite Optional[X]/Union[A, B] to X | None / A | B, List/Dict/Tuple/Type/Set to builtins,
+  typing.Callable & co. to collections.abc, and other pyupgrade rewrites for the >=3.11 floor.
+  Enforce it with ruff's UP rules (UP037, UP038 and UP042 ignored; generated api/schema.py keeps
+  typing imports).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+
 ## v2.10.0 (2026-10-07)
 
 ### Features
