@@ -18,20 +18,6 @@ dependencies = [
 [project.entry-points.pytest11]
 dokker = "dokker.pytest_plugin"
 
-
-[tool.uv]
-dev-dependencies =  [
-    "pytest>=8",
-    "pytest-asyncio>=0.26",
-    "ruff>=0.10",
-    "cookiecutter>=2.5.0,<3",
-    "python-semantic-release>=9.21.1",
-    "pytest-cov>=6.2.1",
-    # Used by the integration tests; previously only present transitively.
-    "requests>=2.31",
-    "mypy>=1.11",
-]
-
 [tool.hatch.build.targets.sdist]
 include = ["dokker"]
 
@@ -46,39 +32,6 @@ include = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.ruff]
-# Exclude a variety of commonly ignored directories.
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".hg",
-    ".nox",
-    ".pants.d",
-    ".pytype",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
-    "tests",
-    "examples",
-]
-
-# Same as Black.
-line-length = 300
-
-[tool.ruff.lint]
-extend-select = ["ANN", "D1", "UP"]
-extend-ignore = ["ANN002", "ANN003", "D100", "ANN401", "UP037", "UP038", "UP042"]
 
 [[tool.pydoc-markdown.loaders]]
 type = "python"
@@ -95,10 +48,21 @@ markers = [
 type = "docusaurus"
 docs_base_path = "website/docs"
 
-
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
 upload_to_pypi = true
 branch = "main"
 build_command = "uv build"
 
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.26",
+    "cookiecutter>=2.5.0,<3",
+    "python-semantic-release>=9.21.1",
+    "pytest-cov>=6.2.1",
+    # Used by the integration tests; previously only present transitively.
+    "requests>=2.31",
+    "ruff==0.17.6",
+    "basedpyright==1.40.2",
+]

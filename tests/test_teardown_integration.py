@@ -58,11 +58,17 @@ def test_down_removes_named_volume_by_default():
     """A default ``down`` (down_on_exit) removes the project's named volume."""
     project = _unique("dokker-vol")
     # bare up() under the default "testing" policy must down + remove volumes on exit
-    with make_testing(VOLUME_COMPOSE, project_name=project, shutdown_timeout=1) as deployment:
+    with make_testing(
+        VOLUME_COMPOSE, project_name=project, shutdown_timeout=1
+    ) as deployment:
         deployment.up()
-        assert _volumes_for(project), "the named volume should exist while the stack is up"
+        assert _volumes_for(project), (
+            "the named volume should exist while the stack is up"
+        )
 
-    assert not _volumes_for(project), "the named volume should be gone after a default down"
+    assert not _volumes_for(project), (
+        "the named volume should be gone after a default down"
+    )
     assert not _containers_for(project), "no containers should survive teardown"
 
 
@@ -94,7 +100,9 @@ def test_body_exception_still_tears_down_containers():
 
     project = _unique("dokker-exc")
     with pytest.raises(_Boom):
-        with make_testing(VOLUME_COMPOSE, project_name=project, shutdown_timeout=1) as deployment:
+        with make_testing(
+            VOLUME_COMPOSE, project_name=project, shutdown_timeout=1
+        ) as deployment:
             deployment.up(down_on_exit=True)
             raise _Boom("failure inside the deployment body")
 
@@ -109,7 +117,9 @@ def test_mirror_full_lifecycle_cleans_up():
     try:
         with mirror(MIRROR_SRC, project_name=project) as deployment:
             deployment.up()  # mirror's default "testing" policy downs + removes the copy
-            assert os.path.isdir(copied), "mirror should copy the source into .dokker/<project>"
+            assert os.path.isdir(copied), (
+                "mirror should copy the source into .dokker/<project>"
+            )
 
         assert not os.path.isdir(copied), "the temp-dir copy must be removed on exit"
         assert not _containers_for(project), "no containers should survive teardown"

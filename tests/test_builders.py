@@ -28,7 +28,10 @@ async def test_local_without_project_name_derives_a_stable_one():
     # ``local()`` deployments of the same file still share it, as they should.
     deployment = local(COMPOSE_FILE)
     cli = await deployment.project.ainititialize()
-    assert cli.docker_cmd[cli.docker_cmd.index("--project-name") + 1] == "configs-basic-compose"
+    assert (
+        cli.docker_cmd[cli.docker_cmd.index("--project-name") + 1]
+        == "configs-basic-compose"
+    )
     assert local(COMPOSE_FILE).project.project_name == deployment.project.project_name
 
 
@@ -71,7 +74,9 @@ def test_testing_removes_the_images_built_for_its_project():
     """A random project name tags images nothing will ask for again: `down` takes them along."""
     assert make_testing(COMPOSE_FILE).remove_images_on_down == "local"
     assert make_testing(COMPOSE_FILE, remove_images=None).remove_images_on_down is None
-    assert make_testing(COMPOSE_FILE, remove_images="all").remove_images_on_down == "all"
+    assert (
+        make_testing(COMPOSE_FILE, remove_images="all").remove_images_on_down == "all"
+    )
 
 
 def test_builders_set_their_default_policy():

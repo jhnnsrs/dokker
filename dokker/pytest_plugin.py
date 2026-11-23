@@ -22,8 +22,8 @@ What this adds over writing the fixture by hand:
 import contextlib
 import os
 import sys
-from typing import TYPE_CHECKING, Any
 from collections.abc import Callable, Generator, Iterator
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -75,7 +75,10 @@ def pytest_configure(config: pytest.Config) -> None:
     claim a generic name like ``integration``, which most projects already use
     to mean "slow / talks to a real service" rather than "needs docker".
     """
-    config.addinivalue_line("markers", "requires_docker: marks tests that need a running docker daemon; skipped automatically when none is reachable")
+    config.addinivalue_line(
+        "markers",
+        "requires_docker: marks tests that need a running docker daemon; skipped automatically when none is reachable",
+    )
 
 
 def _probe_docker() -> bool:
@@ -109,7 +112,11 @@ def _supports_ansi(stream: Any) -> bool:
 
     if sys.platform == "win32":
         # Windows Terminal and ANSICON set these; the legacy console does not.
-        return bool(os.environ.get("WT_SESSION") or os.environ.get("ANSICON") or os.environ.get("TERM"))
+        return bool(
+            os.environ.get("WT_SESSION")
+            or os.environ.get("ANSICON")
+            or os.environ.get("TERM")
+        )
 
     return True
 
@@ -161,7 +168,9 @@ def _capture_disabled(config: pytest.Config) -> Generator[bool, None, None]:
 
 
 @contextlib.contextmanager
-def dokker_progress(config: pytest.Config, deployment: Deployment) -> Generator[Callable[[str], None], None, None]:
+def dokker_progress(
+    config: pytest.Config, deployment: Deployment
+) -> Generator[Callable[[str], None], None, None]:
     """Render a live progress line for `deployment` for the duration of the block.
 
     Yields a ``phase(name)`` callable to label each step. It is always safe to
@@ -197,7 +206,9 @@ def dokker_progress(config: pytest.Config, deployment: Deployment) -> Generator[
     with _capture_disabled(config) as suspended:
         renderer: ProgressLogger | None = None
         if _progress_enabled(config) and suspended:
-            renderer = ProgressLogger(label=getattr(deployment.project, "project_name", None) or "dokker")
+            renderer = ProgressLogger(
+                label=getattr(deployment.project, "project_name", None) or "dokker"
+            )
             deployment.logger = renderer
             renderer.start()
         try:
@@ -224,7 +235,9 @@ def _needs_docker(item: pytest.Item) -> bool:
     return bool(DOKKER_FIXTURES & set(getattr(item, "fixturenames", ())))
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
     """Skip docker-dependent tests when no daemon is reachable.
 
     Done at collection rather than in an autouse fixture, because a
@@ -243,7 +256,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     if _probe_docker():
         return
 
-    skip = pytest.mark.skip(reason="no reachable docker daemon; skipping docker-dependent test")
+    skip = pytest.mark.skip(
+        reason="no reachable docker daemon; skipping docker-dependent test"
+    )
     for item in candidates:
         item.add_marker(skip)
 
@@ -265,7 +280,9 @@ def dokker_keep(request: pytest.FixtureRequest) -> bool:
 
 
 @pytest.fixture(scope="session")
-def dokker_deployment(request: pytest.FixtureRequest) -> Iterator[Callable[..., Deployment]]:
+def dokker_deployment(
+    request: pytest.FixtureRequest,
+) -> Iterator[Callable[..., Deployment]]:
     """A factory for compose stacks that respects dokker's pytest flags.
 
     Returns a callable with the same signature as :func:`dokker.testing`, plus
@@ -331,4 +348,6 @@ def dokker_deployment(request: pytest.FixtureRequest) -> Iterator[Callable[..., 
         deployment.exit()
 
     if keep and started:
-        print("\n--dokker-keep: stacks left running. Remove them with `docker compose ls` + `docker compose -p <name> down -v`.")
+        print(
+            "\n--dokker-keep: stacks left running. Remove them with `docker compose ls` + `docker compose -p <name> down -v`."
+        )

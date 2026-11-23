@@ -91,7 +91,9 @@ async def test_shell_metacharacters_are_not_interpreted_by_a_host_shell():
 
 
 async def test_env_is_merged_over_the_parent_environment():
-    lines = await _collect_with_env(_sh("echo $DOKKER_TEST_VAR"), {"DOKKER_TEST_VAR": "set-by-test"})
+    lines = await _collect_with_env(
+        _sh("echo $DOKKER_TEST_VAR"), {"DOKKER_TEST_VAR": "set-by-test"}
+    )
     assert ("STDOUT", "set-by-test") in lines
 
 

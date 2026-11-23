@@ -1,20 +1,23 @@
-from typing import (
-    Any,
-    cast,
-    Protocol,
-    runtime_checkable,
-    Literal,
-)
-from pydantic import Field, field_validator
-from koil.composition import KoiledModel
-from datetime import timedelta
-from .compose_spec import ComposeSpec, ContainerStatus
 import json
 import os
 import shlex
-from dokker.errors import DokkerError, PortNotFoundError
-from dokker.types import ValidPath, LogStream
+from datetime import timedelta
+from typing import (
+    Any,
+    Literal,
+    Protocol,
+    cast,
+    runtime_checkable,
+)
+
+from koil.composition import KoiledModel
+from pydantic import Field, field_validator
+
 from dokker.command import acheck_docker_available, astream_command
+from dokker.errors import DokkerError, PortNotFoundError
+from dokker.types import LogStream, ValidPath
+
+from .compose_spec import ComposeSpec, ContainerStatus
 
 
 class CLIError(DokkerError):
@@ -59,7 +62,9 @@ def _parse_compose_json_list(payload: str) -> list[dict[str, Any]]:
             try:
                 entries.append(json.loads(line))
             except json.JSONDecodeError as e:
-                raise CLIError(f"Could not parse `docker compose ps` output as JSON, neither as an array nor line-by-line. Offending line: {line!r}") from e
+                raise CLIError(
+                    f"Could not parse `docker compose ps` output as JSON, neither as an array nor line-by-line. Offending line: {line!r}"
+                ) from e
         return entries
 
     if isinstance(parsed, list):
@@ -98,11 +103,18 @@ class CLI(KoiledModel):
     tlscert: ValidPath | None = None
     tlskey: ValidPath | None = None
     tlsverify: bool | None = None
-    compose_files: list[ValidPath] = Field(default_factory=lambda: cast(list[ValidPath], ["docker-compose.yml"]))
-    compose_profiles: list[str] = Field(default_factory=lambda: [], description="Compose profiles to activate (`--profile`).")
+    compose_files: list[ValidPath] = Field(
+        default_factory=lambda: cast(list[ValidPath], ["docker-compose.yml"])
+    )
+    compose_profiles: list[str] = Field(
+        default_factory=lambda: [],
+        description="Compose profiles to activate (`--profile`).",
+    )
     # No default: passing `--env-file .env` unconditionally makes compose fail on
     # every project that does not happen to ship one.
-    compose_env_file: ValidPath | None = Field(default=None, description="Path to an env file to pass as `--env-file`.")
+    compose_env_file: ValidPath | None = Field(
+        default=None, description="Path to an env file to pass as `--env-file`."
+    )
     compose_project_name: str | None = None
     compose_project_directory: ValidPath | None = None
     compose_compatibility: bool | None = None
@@ -121,7 +133,9 @@ class CLI(KoiledModel):
             else:
                 # Relative paths resolve against the CWD at construction time,
                 # so say which directory we actually looked in.
-                raise ValueError(f"Compose file {vo} does not exist (resolved relative to {os.getcwd()}).")
+                raise ValueError(
+                    f"Compose file {vo} does not exist (resolved relative to {os.getcwd()})."
+                )
 
         return x
 
@@ -338,7 +352,9 @@ class CLI(KoiledModel):
     ) -> LogStream:
         """Runs the docker-compose up command asynchronously."""
         if quiet and stream_logs:
-            raise ValueError("It's not possible to have stream_logs=True and quiet=True at the same time. Only one can be activated at a time.")
+            raise ValueError(
+                "It's not possible to have stream_logs=True and quiet=True at the same time. Only one can be activated at a time."
+            )
         if wait_timeout is not None and not wait:
             raise ValueError("`wait_timeout` only applies together with `wait=True`.")
         full_cmd = self.docker_cmd + ["up"]
@@ -606,14 +622,18 @@ class CLI(KoiledModel):
         result = (await self._acollect_stdout(full_cmd)).strip()
 
         if not result:
-            raise PortNotFoundError(f"Port {private_port}/{protocol} of service `{service}` is not published on the host. Either the service is not running, or its compose configuration does not map that port (a `ports:` entry is required -- `expose:` alone is not published).")
+            raise PortNotFoundError(
+                f"Port {private_port}/{protocol} of service `{service}` is not published on the host. Either the service is not running, or its compose configuration does not map that port (a `ports:` entry is required -- `expose:` alone is not published)."
+            )
 
         # Compose prints `host:port`. IPv6 hosts come bracketed, e.g. `[::]:32768`.
         host, _, port = result.rpartition(":")
         try:
             return host.strip("[]"), int(port)
         except ValueError as e:
-            raise PortNotFoundError(f"Could not parse the published port for `{service}:{private_port}` from docker's output: {result!r}") from e
+            raise PortNotFoundError(
+                f"Could not parse the published port for `{service}:{private_port}` from docker's output: {result!r}"
+            ) from e
 
     async def aps(
         self,
@@ -647,11 +667,15 @@ class CLI(KoiledModel):
             return []
 
         try:
-            return [ContainerStatus(**entry) for entry in _parse_compose_json_list(result)]
+            return [
+                ContainerStatus(**entry) for entry in _parse_compose_json_list(result)
+            ]
         except CLIError:
             raise
         except Exception as e:
-            raise CLIError(f"Could not parse the output of `docker compose ps`: {result}") from e
+            raise CLIError(
+                f"Could not parse the output of `docker compose ps`: {result}"
+            ) from e
 
     async def areap_stale(self) -> list[str]:
         """Remove the stacks left behind by dead dokker processes on this host.
@@ -715,4 +739,6 @@ class CLI(KoiledModel):
         try:
             return ComposeSpec(**json.loads(result))
         except Exception as e:
-            raise CLIError(f"Could not inspect! Error while parsing the json: {result}") from e
+            raise CLIError(
+                f"Could not inspect! Error while parsing the json: {result}"
+            ) from e

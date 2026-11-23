@@ -33,8 +33,8 @@ import shutil
 import sys
 import threading
 import time
-from typing import TextIO
 from collections.abc import Callable
+from typing import TextIO
 
 LogTuple = tuple[str, str]
 
@@ -94,7 +94,11 @@ class ProgressEvent:
         """Compare by field, so tests can assert against a literal."""
         if not isinstance(other, ProgressEvent):
             return NotImplemented
-        return (self.resource_type, self.name, self.status) == (other.resource_type, other.name, other.status)
+        return (self.resource_type, self.name, self.status) == (
+            other.resource_type,
+            other.name,
+            other.status,
+        )
 
     def __repr__(self) -> str:
         """Render as a constructor call, for readable test failures."""
@@ -223,7 +227,9 @@ class ProgressLogger:
             return
         self._stop_event = threading.Event()
         self._phase_started = self._now()
-        self._thread = threading.Thread(target=self._run, name="dokker-progress", daemon=True)
+        self._thread = threading.Thread(
+            target=self._run, name="dokker-progress", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -320,7 +326,11 @@ class ProgressLogger:
         Caller must hold the lock.
         """
         tracked = self._tracked_type()
-        rows = [(name, status, (kind, name) in self._settled) for (kind, name), status in self._state.items() if kind == tracked]
+        rows = [
+            (name, status, (kind, name) in self._settled)
+            for (kind, name), status in self._state.items()
+            if kind == tracked
+        ]
         # Stable sort: what is still in flight is what the user is waiting on.
         rows.sort(key=lambda row: row[2])
         return rows
@@ -384,11 +394,17 @@ class ProgressLogger:
         # detail is what should be cut, not the clock telling you it is alive.
         parts.append(f"{elapsed:.1f}s")
         if rows:
-            parts.append(", ".join(f"{self._short_name(name)} {status}" for name, status, _ in rows))
+            parts.append(
+                ", ".join(
+                    f"{self._short_name(name)} {status}" for name, status, _ in rows
+                )
+            )
         if detail:
             parts.append(detail)
 
-        return _truncate(" · ".join(parts), self._terminal_width(), ascii_only=frames == ASCII_FRAMES)
+        return _truncate(
+            " · ".join(parts), self._terminal_width(), ascii_only=frames == ASCII_FRAMES
+        )
 
     def _terminal_width(self) -> int:
         """Usable columns, leaving one spare so the line cannot wrap.

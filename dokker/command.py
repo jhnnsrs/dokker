@@ -3,8 +3,9 @@ import os
 import shlex
 import shutil
 import signal
-from dokker.types import LogStream
+
 from dokker.errors import DockerNotAvailableError, DokkerError
+from dokker.types import LogStream
 
 # Safety net for reaping a subprocess we have asked to die. After killing the
 # process group `proc.wait()` should resolve almost immediately; this bounds it
@@ -42,7 +43,9 @@ async def acheck_docker_available(client_call: list[str] | None = None) -> None:
 
     binary = (client_call or ["docker"])[0]
     if shutil.which(binary) is None:
-        raise DockerNotAvailableError(f"The `{binary}` executable was not found on your PATH. Install Docker (https://docs.docker.com/get-docker/) and make sure `{binary}` is runnable.")
+        raise DockerNotAvailableError(
+            f"The `{binary}` executable was not found on your PATH. Install Docker (https://docs.docker.com/get-docker/) and make sure `{binary}` is runnable."
+        )
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -57,14 +60,22 @@ async def acheck_docker_available(client_call: list[str] | None = None) -> None:
         raise DockerNotAvailableError(f"Could not execute `{binary}`: {e}") from e
 
     try:
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=PREFLIGHT_TIMEOUT)
+        _, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=PREFLIGHT_TIMEOUT
+        )
     except TimeoutError:
         _kill_process_group(proc)
-        raise DockerNotAvailableError(f"`{binary} version` did not respond within {PREFLIGHT_TIMEOUT}s. The Docker daemon appears to be unresponsive.") from None
+        raise DockerNotAvailableError(
+            f"`{binary} version` did not respond within {PREFLIGHT_TIMEOUT}s. The Docker daemon appears to be unresponsive."
+        ) from None
 
     if proc.returncode != 0:
         detail = stderr.decode("utf-8", errors="replace").strip()
-        raise DockerNotAvailableError(f"The `{binary}` CLI is installed but the Docker daemon is not reachable. Start Docker and try again.\n\n{detail}" if detail else f"The `{binary}` CLI is installed but the Docker daemon is not reachable. Start Docker and try again.")
+        raise DockerNotAvailableError(
+            f"The `{binary}` CLI is installed but the Docker daemon is not reachable. Start Docker and try again.\n\n{detail}"
+            if detail
+            else f"The `{binary}` CLI is installed but the Docker daemon is not reachable. Start Docker and try again."
+        )
 
     _docker_available = True
 
@@ -167,7 +178,9 @@ async def _aread_stream(
     await queue.put(None)
 
 
-async def astream_command(command: list[str], env: dict[str, str] | None = None, cwd: str | None = None) -> LogStream:
+async def astream_command(
+    command: list[str], env: dict[str, str] | None = None, cwd: str | None = None
+) -> LogStream:
     """Asynchronously stream the output of a command.
 
     The command is executed directly, not through a shell. Joining an argument
@@ -212,7 +225,9 @@ async def astream_command(command: list[str], env: dict[str, str] | None = None,
             start_new_session=True,
         )
     except FileNotFoundError as e:
-        raise CommandError(f"Failed to start command `{full_cmd}`: {str_command[0]!r} was not found on PATH.") from e
+        raise CommandError(
+            f"Failed to start command `{full_cmd}`: {str_command[0]!r} was not found on PATH."
+        ) from e
     except Exception as e:
         raise CommandError(f"Failed to start command `{full_cmd}`: {e}") from e
 
@@ -260,7 +275,9 @@ async def astream_command(command: list[str], env: dict[str, str] | None = None,
             # When the command fails, surface the streams separately so callers
             # can tell apart the diagnostic output (stderr) from regular output.
             raise CommandError(
-                _format_command_error(full_cmd, proc.returncode, stdout_logs, stderr_logs),
+                _format_command_error(
+                    full_cmd, proc.returncode, stdout_logs, stderr_logs
+                ),
                 command=full_cmd,
                 returncode=proc.returncode,
                 stdout=stdout_logs,

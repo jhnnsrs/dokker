@@ -12,17 +12,13 @@ Run them with::
 """
 
 import subprocess
-from typing import Generator
 
 import pytest
 import requests
 
-from dokker import CommandError, Deployment, HealthCheck
-
-
+from dokker import CommandError, Deployment
 
 pytestmark = pytest.mark.integration
-
 
 
 def test_health_check_passes(basic_project: Deployment) -> None:
@@ -109,8 +105,6 @@ def test_run_wrong_exit_code_raises_with_expectation_note(
     error = excinfo.value
     assert error.returncode == 1
     assert "Expected exit code 2" in str(error)
-
-
 
 
 def test_log_watcher_collects_request_logs(basic_project: Deployment) -> None:

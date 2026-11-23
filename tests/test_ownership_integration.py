@@ -44,31 +44,61 @@ def _unique(prefix: str) -> str:
 
 
 def _docker(*args: str) -> list[str]:
-    out = subprocess.run(["docker", *args], capture_output=True, text=True, check=False).stdout
+    out = subprocess.run(
+        ["docker", *args], capture_output=True, text=True, check=False
+    ).stdout
     return [line for line in out.splitlines() if line.strip()]
 
 
 def _containers_for(project: str) -> list[str]:
-    return _docker("ps", "-a", "--filter", f"label=com.docker.compose.project={project}", "--format", "{{.Names}}")
+    return _docker(
+        "ps",
+        "-a",
+        "--filter",
+        f"label=com.docker.compose.project={project}",
+        "--format",
+        "{{.Names}}",
+    )
 
 
 def _volumes_for(project: str) -> list[str]:
-    return _docker("volume", "ls", "--filter", f"label=com.docker.compose.project={project}", "--format", "{{.Name}}")
+    return _docker(
+        "volume",
+        "ls",
+        "--filter",
+        f"label=com.docker.compose.project={project}",
+        "--format",
+        "{{.Name}}",
+    )
 
 
 def _owner_pid(container: str) -> str:
-    lines = _docker("inspect", "--format", f'{{{{index .Config.Labels "{OWNER_PID_LABEL}"}}}}', container)
+    lines = _docker(
+        "inspect",
+        "--format",
+        f'{{{{index .Config.Labels "{OWNER_PID_LABEL}"}}}}',
+        container,
+    )
     return lines[0] if lines else ""
 
 
 def _force_down(project: str) -> None:
-    subprocess.run(["docker", "compose", "-p", project, "down", "--volumes", "--remove-orphans"], capture_output=True, check=False)
+    subprocess.run(
+        ["docker", "compose", "-p", project, "down", "--volumes", "--remove-orphans"],
+        capture_output=True,
+        check=False,
+    )
 
 
 def _strand(project: str) -> int:
     """Start ``project`` from a child process that dies without teardown; return its PID."""
     code = STRAND_SCRIPT.format(compose=COMPOSE, project=project)
-    proc = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = subprocess.Popen(
+        [sys.executable, "-c", code],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
     _, stderr = proc.communicate()
     assert proc.returncode == 137, stderr
     assert _containers_for(project), "the stranded stack should still be up"
@@ -131,7 +161,9 @@ def test_a_live_owners_stack_survives_another_up_and_an_explicit_reap():
             a.up()
             with make_testing(COMPOSE, project_name=second, shutdown_timeout=1) as b:
                 b.up()
-                assert _containers_for(first), "a live stack must never be reaped by a sibling's up()"
+                assert _containers_for(first), (
+                    "a live stack must never be reaped by a sibling's up()"
+                )
                 assert first not in reap_stale()
                 assert _containers_for(first)
     finally:
@@ -155,7 +187,9 @@ def test_reap_stale_false_leaves_strays_alone():
     live = _unique("dokker-live")
     try:
         _strand(stranded)
-        with make_testing(COMPOSE, project_name=live, shutdown_timeout=1, reap_stale=False) as d:
+        with make_testing(
+            COMPOSE, project_name=live, shutdown_timeout=1, reap_stale=False
+        ) as d:
             d.up()
             assert _containers_for(stranded)
     finally:

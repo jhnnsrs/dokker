@@ -1,9 +1,11 @@
-from pydantic import BaseModel, ConfigDict, Field
-from pathlib import Path
-from dokker.cli import CLI
-from typing import Any
 import logging
 import os
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from dokker.cli import CLI
 from dokker.projects.copy import COMPOSE_FILE_NAMES
 from dokker.projects.errors import ProjectError
 
@@ -27,7 +29,9 @@ class DokkerProject(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    base_dir: ValidPath = Field(default_factory=lambda: os.path.join(os.getcwd(), ".dokker"))
+    base_dir: ValidPath = Field(
+        default_factory=lambda: os.path.join(os.getcwd(), ".dokker")
+    )
     name: str
     _outs: dict[str, Any] | None = None
     _project_dir: ValidPath | None = None
@@ -44,14 +48,22 @@ class DokkerProject(BaseModel):
 
         self._project_dir = os.path.join(self.base_dir, self.name)
         if not os.path.exists(self._project_dir):
-            raise DokkerProjectError(f"No project found with the name {self.name} in {self.base_dir}. Available projects: {os.listdir(self.base_dir)}")
+            raise DokkerProjectError(
+                f"No project found with the name {self.name} in {self.base_dir}. Available projects: {os.listdir(self.base_dir)}"
+            )
 
         compose_file = next(
-            (os.path.join(str(self._project_dir), name) for name in COMPOSE_FILE_NAMES if os.path.exists(os.path.join(str(self._project_dir), name))),
+            (
+                os.path.join(str(self._project_dir), name)
+                for name in COMPOSE_FILE_NAMES
+                if os.path.exists(os.path.join(str(self._project_dir), name))
+            ),
             None,
         )
         if compose_file is None:
-            raise DokkerProjectError(f"No compose file found in {self._project_dir}. Expected one of: {', '.join(COMPOSE_FILE_NAMES)}.")
+            raise DokkerProjectError(
+                f"No compose file found in {self._project_dir}. Expected one of: {', '.join(COMPOSE_FILE_NAMES)}."
+            )
 
         return CLI(
             compose_files=[compose_file],

@@ -1,36 +1,51 @@
-from types import TracebackType
-import aiohttp.client_exceptions
-import aiohttp.http_exceptions
-from pydantic import BaseModel, ConfigDict, Field, InstanceOf, PrivateAttr
-from typing import Any, Literal, Protocol, Self, runtime_checkable
-from collections.abc import Awaitable
-from koil.composition import KoiledModel
-from dataclasses import dataclass
 import asyncio
-from pathlib import Path
-from dokker.compose_spec import ComposeSpec, ContainerStatus
-from dokker.project import DownOptions, DownsItself, Project, PullOptions, PullsItself, StartsItself, StopsItself, UpOptions
-from koil import unkoil
-from dokker.cli import CLI
-from dokker.loggers.void import VoidLogger
-from dokker.types import LogFunction, LogStream
-from .log_watcher import LogRoll, LogWatcher
-import aiohttp
-import certifi
-from ssl import SSLContext
-import ssl
-from collections.abc import Callable
-from dokker.errors import NotInitializedError, NotInspectedError, HealthCheckError, TearDownError
-from dokker.command import CommandError
-from dokker.ownership import write_owner_override
 import logging
 import shutil
+import ssl
 import tempfile
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from pathlib import Path
+from ssl import SSLContext
+from types import TracebackType
+from typing import Any, Literal, Protocol, Self, runtime_checkable
+
+import aiohttp
+import aiohttp.client_exceptions
+import aiohttp.http_exceptions
+import certifi
+from koil import unkoil
+from koil.composition import KoiledModel
+from pydantic import BaseModel, ConfigDict, Field, InstanceOf, PrivateAttr
 
 # Runtime (not TYPE_CHECKING) import: `Check` is used as a pydantic field
 # annotation below, so it has to be resolvable when the model is built.
 # `dokker.checks` deliberately does not import this module, so there is no cycle.
 from dokker.checks import Check, CheckContext
+from dokker.cli import CLI
+from dokker.command import CommandError
+from dokker.compose_spec import ComposeSpec, ContainerStatus
+from dokker.errors import (
+    HealthCheckError,
+    NotInitializedError,
+    NotInspectedError,
+    TearDownError,
+)
+from dokker.loggers.void import VoidLogger
+from dokker.ownership import write_owner_override
+from dokker.project import (
+    DownOptions,
+    DownsItself,
+    Project,
+    PullOptions,
+    PullsItself,
+    StartsItself,
+    StopsItself,
+    UpOptions,
+)
+from dokker.types import LogFunction, LogStream
+
+from .log_watcher import LogRoll, LogWatcher
 
 logger = logging.getLogger(__name__)
 
@@ -89,10 +104,17 @@ class HealthCheck(BaseModel):
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    url: str | Callable[[ComposeSpec], str] = Field(description="The url to check. Can be a string or a callable that takes the compose spec as an argument and returns a string.")
+    url: str | Callable[[ComposeSpec], str] = Field(
+        description="The url to check. Can be a string or a callable that takes the compose spec as an argument and returns a string."
+    )
     service: str = Field(description="The service to check.")
-    max_retries: int = Field(default=3, description="The maximum number of retries before failing.")
-    timeout: int = Field(default=10, description="Seconds to sleep *between* retries. This is not a request timeout -- see `request_timeout`.")
+    max_retries: int = Field(
+        default=3, description="The maximum number of retries before failing."
+    )
+    timeout: int = Field(
+        default=10,
+        description="Seconds to sleep *between* retries. This is not a request timeout -- see `request_timeout`.",
+    )
     request_timeout: float = Field(
         default=10.0,
         description="Seconds to wait for a single HTTP request before treating the attempt as failed. Without this, a service that accepts the connection but never responds blocks on aiohttp's 5-minute default, once per retry.",
@@ -135,14 +157,22 @@ class HealthCheck(BaseModel):
             try:
                 async with session.get(url) as resp:
                     if resp.status not in self.valid_statuses:
-                        raise HealthCheckError(f"Health check for service `{self.service}` at {url} returned status {resp.status}, expected one of {self.valid_statuses}.")
+                        raise HealthCheckError(
+                            f"Health check for service `{self.service}` at {url} returned status {resp.status}, expected one of {self.valid_statuses}."
+                        )
                     return await resp.text()
             except TimeoutError as e:
-                raise HealthCheckError(f"Health check for service `{self.service}` at {url} timed out after {self.request_timeout}s.") from e
+                raise HealthCheckError(
+                    f"Health check for service `{self.service}` at {url} timed out after {self.request_timeout}s."
+                ) from e
             except aiohttp.http_exceptions.BadHttpMessage as e:
-                raise HealthCheckError(f"Health check for service `{self.service}` at {url} got a malformed HTTP response: {e}") from e
+                raise HealthCheckError(
+                    f"Health check for service `{self.service}` at {url} got a malformed HTTP response: {e}"
+                ) from e
             except aiohttp.client_exceptions.ClientError as e:
-                raise HealthCheckError(f"Health check for service `{self.service}` at {url} could not connect: {e}") from e
+                raise HealthCheckError(
+                    f"Health check for service `{self.service}` at {url} could not connect: {e}"
+                ) from e
 
     async def aperform(self, ctx: "CheckContext") -> None:
         """Run this check against a deployment.
@@ -186,7 +216,9 @@ class Deployment(KoiledModel):
     # trying to construct the protocol. The previous `default_factory=Project`
     # could never fire: instantiating a Protocol always raises TypeError, so
     # `Deployment()` without a project was unconstructible rather than defaulted.
-    project: InstanceOf[Project] = Field(description="The project backing this deployment; supplies the CLI and the before/after command hooks.")
+    project: InstanceOf[Project] = Field(
+        description="The project backing this deployment; supplies the CLI and the before/after command hooks."
+    )
 
     # InstanceOf, not a bare `Check`: pydantic would otherwise try to *construct*
     # the protocol to validate each item. This validates by isinstance instead,
@@ -219,7 +251,9 @@ class Deployment(KoiledModel):
     )
     shutdown_timeout: int | None = Field(
         default=None,
-        description=("Grace period in seconds passed to `docker compose stop`/`down` as `-t`. A container that ignores SIGTERM is SIGKILLed after this many seconds, which bounds how long stopping a single container can block teardown. None (the default) uses docker's own default (10s)."),
+        description=(
+            "Grace period in seconds passed to `docker compose stop`/`down` as `-t`. A container that ignores SIGTERM is SIGKILLed after this many seconds, which bounds how long stopping a single container can block teardown. None (the default) uses docker's own default (10s)."
+        ),
     )
     teardown_timeout: float | None = Field(
         default=None,
@@ -269,13 +303,17 @@ class Deployment(KoiledModel):
 
     _spec: ComposeSpec | None = None
     _cli: CLI | None = None
-    _cleanup_stack: list[Callable[[], Awaitable[Any]]] = PrivateAttr(default_factory=list)
+    _cleanup_stack: list[Callable[[], Awaitable[Any]]] = PrivateAttr(
+        default_factory=list
+    )
     _registered_keys: set[str] = PrivateAttr(default_factory=set)
     _entered: bool = PrivateAttr(default=False)
     # Directory holding the owner-label override while one is in force.
     _owner_override_dir: str | None = PrivateAttr(default=None)
 
-    def _register_cleanup(self, coro_factory: Callable[[], Awaitable[Any]], key: str | None = None) -> None:
+    def _register_cleanup(
+        self, coro_factory: Callable[[], Awaitable[Any]], key: str | None = None
+    ) -> None:
         """Register an on-exit teardown.
 
         ``coro_factory`` is a zero-argument callable returning a coroutine. It is
@@ -315,7 +353,9 @@ class Deployment(KoiledModel):
             If the deployment has not been inspected.
         """
         if self._spec is None:
-            raise NotInspectedError("Deployment not inspected. Call await deployment.ainspect() first.")
+            raise NotInspectedError(
+                "Deployment not inspected. Call await deployment.ainspect() first."
+            )
         return self._spec
 
     async def ainitialize(self) -> "CLI":
@@ -337,7 +377,9 @@ class Deployment(KoiledModel):
         # no-op for projects that create nothing (LocalProject/DokkerProject).
         if self._entered and TEARDOWN_POLICIES[self.policy].tear_down_project:
             cli = self._cli
-            self._register_cleanup(lambda: self.project.atear_down(cli), key="project_teardown")
+            self._register_cleanup(
+                lambda: self.project.atear_down(cli), key="project_teardown"
+            )
         return self._cli
 
     async def aretrieve_cli(self) -> "CLI":
@@ -346,7 +388,9 @@ class Deployment(KoiledModel):
             if self.auto_initialize:
                 self._cli = await self.ainitialize()
             else:
-                raise NotInitializedError("Deployment not initialized and auto_initialize is False. Call await deployment.ainitialize() first.")
+                raise NotInitializedError(
+                    "Deployment not initialized and auto_initialize is False. Call await deployment.ainitialize() first."
+                )
 
         return self._cli
 
@@ -434,10 +478,17 @@ class Deployment(KoiledModel):
                 # Re-raise the rich error from the command layer, but make clear
                 # that a specific exit code was expected when that is the case.
                 if expected_exit_code != 0:
-                    error.args = (f"{error.args[0]}\n\nExpected exit code {expected_exit_code}, got {returncode}.",)
+                    error.args = (
+                        f"{error.args[0]}\n\nExpected exit code {expected_exit_code}, got {returncode}.",
+                    )
                 raise error
             raise CommandError(
-                f"{what} exited with code {returncode}, expected {expected_exit_code}.\n\n" + ("STDOUT:\n" + logs.stdout if logs.stdout else "No output was captured."),
+                f"{what} exited with code {returncode}, expected {expected_exit_code}.\n\n"
+                + (
+                    "STDOUT:\n" + logs.stdout
+                    if logs.stdout
+                    else "No output was captured."
+                ),
                 command=command if isinstance(command, str) else " ".join(command),
                 returncode=returncode,
                 stdout=logs.stdout_list,
@@ -531,7 +582,13 @@ class Deployment(KoiledModel):
         """
         return unkoil(self.ainspect)
 
-    async def aget_port(self, service: str, private_port: int, protocol: str = "tcp", index: int | None = None) -> int:
+    async def aget_port(
+        self,
+        service: str,
+        private_port: int,
+        protocol: str = "tcp",
+        index: int | None = None,
+    ) -> int:
         """Resolve the host port a service's container port is published on.
 
         Unlike ``spec.services[...].get_port_for_internal(...)``, which reads the
@@ -561,12 +618,20 @@ class Deployment(KoiledModel):
         _, port = await cli.aport(service, private_port, protocol=protocol, index=index)
         return port
 
-    def get_port(self, service: str, private_port: int, protocol: str = "tcp", index: int | None = None) -> int:
+    def get_port(
+        self,
+        service: str,
+        private_port: int,
+        protocol: str = "tcp",
+        index: int | None = None,
+    ) -> int:
         """Resolve the host port a service's container port is published on.
 
         See ``aget_port`` for details.
         """
-        return unkoil(self.aget_port, service, private_port, protocol=protocol, index=index)
+        return unkoil(
+            self.aget_port, service, private_port, protocol=protocol, index=index
+        )
 
     async def aget_url(
         self,
@@ -617,9 +682,13 @@ class Deployment(KoiledModel):
 
         See ``aget_url`` for details.
         """
-        return unkoil(self.aget_url, service, private_port, scheme=scheme, host=host, path=path)
+        return unkoil(
+            self.aget_url, service, private_port, scheme=scheme, host=host, path=path
+        )
 
-    async def aps(self, services: list[str] | None = None, all: bool = True) -> list[ContainerStatus]:
+    async def aps(
+        self, services: list[str] | None = None, all: bool = True
+    ) -> list[ContainerStatus]:
         """List the deployment's containers and their runtime state.
 
         Parameters
@@ -638,7 +707,9 @@ class Deployment(KoiledModel):
         cli = await self.aretrieve_cli()
         return await cli.aps(services=services, all=all)
 
-    def ps(self, services: list[str] | None = None, all: bool = True) -> list[ContainerStatus]:
+    def ps(
+        self, services: list[str] | None = None, all: bool = True
+    ) -> list[ContainerStatus]:
         """List the deployment's containers and their runtime state.
 
         See ``aps`` for details.
@@ -685,7 +756,9 @@ class Deployment(KoiledModel):
         self.health_checks.append(check)
         return check
 
-    async def arun_check(self, check: "Check", retry: int = 0, timeout: int | None = None) -> None:
+    async def arun_check(
+        self, check: "Check", retry: int = 0, timeout: int | None = None
+    ) -> None:
         """Run a single readiness check, retrying until it passes or gives up.
 
         Any `Check` is accepted -- the HTTP `HealthCheck` as well as the
@@ -727,19 +800,31 @@ class Deployment(KoiledModel):
 
                 describe = f"`{type(check).__name__}` for service `{check.service}`"
                 if not getattr(check, "error_with_logs", True):
-                    raise HealthCheckError(f"Health check {describe} failed after {check.max_retries} retries: {e}\n\n(Service logs are disabled for this check.)") from e
+                    raise HealthCheckError(
+                        f"Health check {describe} failed after {check.max_retries} retries: {e}\n\n(Service logs are disabled for this check.)"
+                    ) from e
 
                 logs = LogRoll()
                 try:
-                    async for log in self._cli.astream_docker_logs(services=[check.service], follow=False):
+                    async for log in self._cli.astream_docker_logs(
+                        services=[check.service], follow=False
+                    ):
                         logs.append(log)
                 except CommandError:
                     # Failing to fetch logs must not replace the health error.
                     pass
 
-                raise HealthCheckError(f"Health check {describe} failed after {check.max_retries} retries: {e}\n\nService logs:\n" + ("\n".join(i for _, i in logs) if logs else "(no logs captured)")) from e
+                raise HealthCheckError(
+                    f"Health check {describe} failed after {check.max_retries} retries: {e}\n\nService logs:\n"
+                    + ("\n".join(i for _, i in logs) if logs else "(no logs captured)")
+                ) from e
 
-    async def acheck_health(self, timeout: int | None = None, retry: int = 0, services: list[str] | None = None) -> None:
+    async def acheck_health(
+        self,
+        timeout: int | None = None,
+        retry: int = 0,
+        services: list[str] | None = None,
+    ) -> None:
         """Check the health of the deployment, running all checks concurrently.
 
         Parameters
@@ -763,12 +848,23 @@ class Deployment(KoiledModel):
         if services is None:
             selected = list(self.health_checks)
         else:
-            selected = [check for check in self.health_checks if check.service in services]
-            uncovered = sorted(set(services) - {check.service for check in self.health_checks})
+            selected = [
+                check for check in self.health_checks if check.service in services
+            ]
+            uncovered = sorted(
+                set(services) - {check.service for check in self.health_checks}
+            )
             if uncovered:
-                raise HealthCheckError(f"No health check is registered for {', '.join('`' + s + '`' for s in uncovered)}. Registered checks cover: {sorted({c.service for c in self.health_checks}) or 'nothing'}.")
+                raise HealthCheckError(
+                    f"No health check is registered for {', '.join('`' + s + '`' for s in uncovered)}. Registered checks cover: {sorted({c.service for c in self.health_checks}) or 'nothing'}."
+                )
 
-        await asyncio.gather(*[self.arun_check(check, retry=retry, timeout=timeout) for check in selected])
+        await asyncio.gather(
+            *[
+                self.arun_check(check, retry=retry, timeout=timeout)
+                for check in selected
+            ]
+        )
 
     def check_health(
         self,
@@ -787,7 +883,9 @@ class Deployment(KoiledModel):
         services : Optional[List[str]]
             Only run checks for these services. If None, all checks run.
         """
-        return unkoil(self.acheck_health, timeout=timeout, retry=retry, services=services)
+        return unkoil(
+            self.acheck_health, timeout=timeout, retry=retry, services=services
+        )
 
     def create_watcher(
         self,
@@ -878,7 +976,9 @@ class Deployment(KoiledModel):
         both as True is contradictory and raises.
         """
         if down_on_exit and stop_on_exit:
-            raise ValueError("Pass either down_on_exit or stop_on_exit, not both (down already stops the containers).")
+            raise ValueError(
+                "Pass either down_on_exit or stop_on_exit, not both (down already stops the containers)."
+            )
         if down_on_exit is None and stop_on_exit is None:
             return TEARDOWN_POLICIES[self.policy].exit_action
         if down_on_exit:
@@ -901,13 +1001,18 @@ class Deployment(KoiledModel):
         try:
             services = await cli.aconfig_services()
         except CommandError as e:
-            logger.warning("Could not resolve the services to label this stack's owner; a stray copy of it will not be reaped automatically: %s", e)
+            logger.warning(
+                "Could not resolve the services to label this stack's owner; a stray copy of it will not be reaped automatically: %s",
+                e,
+            )
             return
         directory = tempfile.mkdtemp(prefix="dokker-owner-")
         path = write_owner_override(services, directory)
         cli.compose_files = [*cli.compose_files, path]
         self._owner_override_dir = directory
-        self._register_cleanup(lambda: self._aremove_owner_labels(cli, path), key="owner_override")
+        self._register_cleanup(
+            lambda: self._aremove_owner_labels(cli, path), key="owner_override"
+        )
 
     async def _aremove_owner_labels(self, cli: "CLI", path: str) -> None:
         """Drop the owner override from the CLI and delete its directory."""
@@ -1144,7 +1249,10 @@ class Deployment(KoiledModel):
             covered = {check.service for check in self.health_checks}
             uncovered = [s for s in services if s not in covered]
             if uncovered:
-                logger.warning("restart(await_health=True): no health check is registered for %s, so their readiness was not verified.", ", ".join(uncovered))
+                logger.warning(
+                    "restart(await_health=True): no health check is registered for %s, so their readiness was not verified.",
+                    ", ".join(uncovered),
+                )
             to_check = [s for s in services if s in covered]
             if to_check:
                 await self.acheck_health(services=to_check)
@@ -1224,7 +1332,12 @@ class Deployment(KoiledModel):
         if isinstance(self.project, PullsItself):
             stream = self.project.astream_pull(
                 cli,
-                PullOptions(services=services, ignore_pull_failures=ignore_pull_failures, include_deps=include_deps, quiet=quiet),
+                PullOptions(
+                    services=services,
+                    ignore_pull_failures=ignore_pull_failures,
+                    include_deps=include_deps,
+                    quiet=quiet,
+                ),
             )
         else:
             stream = cli.astream_pull(
@@ -1382,7 +1495,14 @@ class Deployment(KoiledModel):
         until: str | None = None,
     ) -> LogRoll:
         """Fetch the current logs of the deployment. See ``alogs``."""
-        return unkoil(self.alogs, services=services, tail=tail, timestamps=timestamps, since=since, until=until)
+        return unkoil(
+            self.alogs,
+            services=services,
+            tail=tail,
+            timestamps=timestamps,
+            since=since,
+            until=until,
+        )
 
     async def abuild(
         self,
@@ -1401,7 +1521,13 @@ class Deployment(KoiledModel):
         """
         cli = await self.aretrieve_cli()
         logs = LogRoll()
-        async for log in cli.astream_build(services=services, no_cache=no_cache, pull=pull, quiet=quiet, build_args=build_args):
+        async for log in cli.astream_build(
+            services=services,
+            no_cache=no_cache,
+            pull=pull,
+            quiet=quiet,
+            build_args=build_args,
+        ):
             logs.append(log)
             self.logger.on_up(log)
         return logs
@@ -1415,9 +1541,18 @@ class Deployment(KoiledModel):
         build_args: dict[str, str] | None = None,
     ) -> LogRoll:
         """Build the deployment's images. See ``abuild``."""
-        return unkoil(self.abuild, services=services, no_cache=no_cache, pull=pull, quiet=quiet, build_args=build_args)
+        return unkoil(
+            self.abuild,
+            services=services,
+            no_cache=no_cache,
+            pull=pull,
+            quiet=quiet,
+            build_args=build_args,
+        )
 
-    async def akill(self, services: list[str] | str | None = None, signal: str | None = None) -> LogRoll:
+    async def akill(
+        self, services: list[str] | str | None = None, signal: str | None = None
+    ) -> LogRoll:
         """Kill the deployment's containers without waiting out a grace period.
 
         Unlike ``astop``, this does not send SIGTERM and wait -- useful for
@@ -1435,7 +1570,9 @@ class Deployment(KoiledModel):
             self.logger.on_stop(log)
         return logs
 
-    def kill(self, services: list[str] | str | None = None, signal: str | None = None) -> LogRoll:
+    def kill(
+        self, services: list[str] | str | None = None, signal: str | None = None
+    ) -> LogRoll:
         """Kill the deployment's containers. See ``akill``."""
         return unkoil(self.akill, services=services, signal=signal)
 
@@ -1506,9 +1643,22 @@ class Deployment(KoiledModel):
 
         logs = LogRoll()
         if isinstance(self.project, DownsItself):
-            stream = self.project.astream_down(cli, DownOptions(timeout=timeout, volumes=volumes, remove_orphans=remove_orphans, remove_images=rmi))
+            stream = self.project.astream_down(
+                cli,
+                DownOptions(
+                    timeout=timeout,
+                    volumes=volumes,
+                    remove_orphans=remove_orphans,
+                    remove_images=rmi,
+                ),
+            )
         else:
-            stream = cli.astream_down(timeout=timeout, volumes=volumes, remove_orphans=remove_orphans, remove_images=rmi)
+            stream = cli.astream_down(
+                timeout=timeout,
+                volumes=volumes,
+                remove_orphans=remove_orphans,
+                remove_images=rmi,
+            )
         async for log in stream:
             logs.append(log)
             self.logger.on_down(log)
@@ -1569,7 +1719,13 @@ class Deployment(KoiledModel):
         LogRoll
             The logs of the down command.
         """
-        return unkoil(self.adown, timeout=timeout, volumes=volumes, remove_orphans=remove_orphans, remove_images=remove_images)
+        return unkoil(
+            self.adown,
+            timeout=timeout,
+            volumes=volumes,
+            remove_orphans=remove_orphans,
+            remove_images=remove_images,
+        )
 
     async def astop(self, timeout: int | None = None) -> LogRoll:
         """Stop the deployment.
@@ -1595,7 +1751,11 @@ class Deployment(KoiledModel):
             timeout = self.shutdown_timeout
 
         logs = LogRoll()
-        stream = self.project.astream_stop(cli, timeout) if isinstance(self.project, StopsItself) else cli.astream_stop(timeout=timeout)
+        stream = (
+            self.project.astream_stop(cli, timeout)
+            if isinstance(self.project, StopsItself)
+            else cli.astream_stop(timeout=timeout)
+        )
         async for log in stream:
             logs.append(log)
             self.logger.on_stop(log)
@@ -1683,18 +1843,25 @@ class Deployment(KoiledModel):
         """
         try:
             if self.teardown_timeout is not None:
-                await asyncio.wait_for(self._arun_teardown(), timeout=self.teardown_timeout)
+                await asyncio.wait_for(
+                    self._arun_teardown(), timeout=self.teardown_timeout
+                )
             else:
                 await self._arun_teardown()
         except TimeoutError as e:
             message = f"Tearing the deployment down timed out after {self.teardown_timeout}s. docker compose did not finish in time and the docker daemon may still be completing the operation in the background. Consider lowering `shutdown_timeout` so unresponsive containers are killed sooner."
             if exc_type is not None:
-                logger.warning("%s (while another error was propagating, not raising)", message)
+                logger.warning(
+                    "%s (while another error was propagating, not raising)", message
+                )
             else:
                 raise TearDownError(message) from e
         except CommandError as e:
             if exc_type is not None:
-                logger.warning("Deployment teardown failed (while another error was propagating, not raising): %s", e)
+                logger.warning(
+                    "Deployment teardown failed (while another error was propagating, not raising): %s",
+                    e,
+                )
             else:
                 raise
         finally:

@@ -52,7 +52,9 @@ def test_empty_roll():
 
 
 def test_format_log_watcher_message_includes_services_and_logs():
-    watcher = LogWatcher(cli_bearer=_DummyBearer(), services=["mikro"], capture_stdout=True)
+    watcher = LogWatcher(
+        cli_bearer=_DummyBearer(), services=["mikro"], capture_stdout=True
+    )
     watcher.collected_logs = _sample_roll()
 
     message = format_log_watcher_message(watcher, ValueError("request failed"))
@@ -63,7 +65,9 @@ def test_format_log_watcher_message_includes_services_and_logs():
 
 
 def test_format_log_watcher_message_respects_capture_stdout_false():
-    watcher = LogWatcher(cli_bearer=_DummyBearer(), services=["mikro"], capture_stdout=False)
+    watcher = LogWatcher(
+        cli_bearer=_DummyBearer(), services=["mikro"], capture_stdout=False
+    )
     watcher.collected_logs = _sample_roll()
 
     message = format_log_watcher_message(watcher, ValueError("request failed"))

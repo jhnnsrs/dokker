@@ -1,6 +1,8 @@
 import asyncio
-from dokker import local, HealthCheck
+
 import pytest
+
+from dokker import HealthCheck, local
 
 COMPOSE_FILE = "tests/configs/lifecycle-compose.yaml"
 
@@ -9,9 +11,7 @@ COMPOSE_FILE = "tests/configs/lifecycle-compose.yaml"
 def test_up_down():
     with local(
         COMPOSE_FILE,
-        health_checks=[
-            HealthCheck(url="http://localhost:5679", service="echo")
-        ],
+        health_checks=[HealthCheck(url="http://localhost:5679", service="echo")],
     ) as l:
         l.down()
 
@@ -26,9 +26,7 @@ def test_up_down():
 async def test_up_down_async():
     async with local(
         COMPOSE_FILE,
-        health_checks=[
-            HealthCheck(url="http://localhost:5679", service="echo")
-        ],
+        health_checks=[HealthCheck(url="http://localhost:5679", service="echo")],
         shutdown_timeout=1,
     ) as l:
         await l.adown()
@@ -42,4 +40,6 @@ async def test_up_down_async():
 
         answers = await asyncio.gather(one_task, two_task)
         for answer in answers:
-            assert "hello world" in answer.stdout, f"Expected 'hello world', got {answer}"
+            assert "hello world" in answer.stdout, (
+                f"Expected 'hello world', got {answer}"
+            )

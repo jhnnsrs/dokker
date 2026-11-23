@@ -68,15 +68,32 @@ def make_logger(**kwargs):
 @pytest.mark.parametrize(
     "line,expected",
     [
-        ("Container dokkerprog-redis-1 Healthy", ProgressEvent("Container", "dokkerprog-redis-1", "Healthy")),
-        ("Network dokkerprog_default Created", ProgressEvent("Network", "dokkerprog_default", "Created")),
+        (
+            "Container dokkerprog-redis-1 Healthy",
+            ProgressEvent("Container", "dokkerprog-redis-1", "Healthy"),
+        ),
+        (
+            "Network dokkerprog_default Created",
+            ProgressEvent("Network", "dokkerprog_default", "Created"),
+        ),
         ("Image alpine:3.19 Pulling", ProgressEvent("Image", "alpine:3.19", "Pulling")),
-        ("Volume dokkerprog_data Created", ProgressEvent("Volume", "dokkerprog_data", "Created")),
+        (
+            "Volume dokkerprog_data Created",
+            ProgressEvent("Volume", "dokkerprog_data", "Created"),
+        ),
         # Compose leaves a trailing space on typed lines; command.py strips it,
         # but the parser must not depend on that having happened.
-        ("Container dokkerprog-redis-1 Started ", ProgressEvent("Container", "dokkerprog-redis-1", "Started")),
+        (
+            "Container dokkerprog-redis-1 Started ",
+            ProgressEvent("Container", "dokkerprog-redis-1", "Started"),
+        ),
         # Multi-word statuses stay intact.
-        ("Container x-1 Skipped - Image is already being pulled", ProgressEvent("Container", "x-1", "Skipped - Image is already being pulled")),
+        (
+            "Container x-1 Skipped - Image is already being pulled",
+            ProgressEvent(
+                "Container", "x-1", "Skipped - Image is already being pulled"
+            ),
+        ),
     ],
 )
 def test_parses_typed_resource_lines(line, expected):
@@ -86,9 +103,18 @@ def test_parses_typed_resource_lines(line, expected):
 @pytest.mark.parametrize(
     "line,expected",
     [
-        ("17a39c0ba978 Downloading 48.48kB", ProgressEvent(None, "17a39c0ba978", "Downloading 48.48kB")),
-        ("17a39c0ba978 Pulling fs layer 0B", ProgressEvent(None, "17a39c0ba978", "Pulling fs layer 0B")),
-        ("17a39c0ba978 Download complete 0B", ProgressEvent(None, "17a39c0ba978", "Download complete 0B")),
+        (
+            "17a39c0ba978 Downloading 48.48kB",
+            ProgressEvent(None, "17a39c0ba978", "Downloading 48.48kB"),
+        ),
+        (
+            "17a39c0ba978 Pulling fs layer 0B",
+            ProgressEvent(None, "17a39c0ba978", "Pulling fs layer 0B"),
+        ),
+        (
+            "17a39c0ba978 Download complete 0B",
+            ProgressEvent(None, "17a39c0ba978", "Download complete 0B"),
+        ),
     ],
 )
 def test_parses_layer_lines_without_a_type(line, expected):
@@ -120,7 +146,9 @@ def test_strips_ansi_before_parsing():
     """FORCE_COLOR makes compose emit escapes even on a pipe."""
     coloured = "\x1b[34mContainer\x1b[0m dokkerprog-redis-1 \x1b[32mHealthy\x1b[0m"
     assert strip_ansi(coloured) == "Container dokkerprog-redis-1 Healthy"
-    assert parse_compose_progress(coloured) == ProgressEvent("Container", "dokkerprog-redis-1", "Healthy")
+    assert parse_compose_progress(coloured) == ProgressEvent(
+        "Container", "dokkerprog-redis-1", "Healthy"
+    )
 
 
 # ---------------------------------------------------------------- state
@@ -365,5 +393,3 @@ def test_writes_to_a_closed_stream_are_swallowed():
     buffer.close()
     logger.draw()  # must not raise
     logger.stop()
-
-

@@ -1,8 +1,7 @@
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Annotated
 
 from dokker.errors import LabelNotFoundError, PortNotFoundError, ServiceNotFoundError
 
@@ -111,11 +110,15 @@ class ComposeConfigService(BaseModel):
             The label of the service.
         """
         if not self.labels:
-            raise LabelNotFoundError("No labels found in the service. Please check the service configuration.")
+            raise LabelNotFoundError(
+                "No labels found in the service. Please check the service configuration."
+            )
 
         rlabel = self.labels.get(label)
         if not rlabel:
-            raise LabelNotFoundError(f"Label {label} not found in the service. Available labels: {sorted(self.labels)}")
+            raise LabelNotFoundError(
+                f"Label {label} not found in the service. Available labels: {sorted(self.labels)}"
+            )
 
         return rlabel
 
@@ -134,18 +137,24 @@ class ComposeConfigService(BaseModel):
             port, or the mapping has no statically declared host port.
         """
         if not self.ports:
-            raise PortNotFoundError("No ports found in the service. Please check the service configuration.")
+            raise PortNotFoundError(
+                "No ports found in the service. Please check the service configuration."
+            )
 
         for i in self.ports:
             if i.target == port:
                 if i.published is None:
                     # Returning the mapping here would hand back published=None,
                     # which silently formats into URLs as "http://localhost:None".
-                    raise PortNotFoundError(f"Internal port {port} is published on a dynamically assigned host port, which the compose config does not contain. Use `deployment.get_port('<service>', {port})` to resolve the actual host port of the running container.")
+                    raise PortNotFoundError(
+                        f"Internal port {port} is published on a dynamically assigned host port, which the compose config does not contain. Use `deployment.get_port('<service>', {port})` to resolve the actual host port of the running container."
+                    )
                 return i
 
         available = sorted(p.target for p in self.ports if p.target is not None)
-        raise PortNotFoundError(f"No published port found for internal port {port}. Mapped internal ports: {available}")
+        raise PortNotFoundError(
+            f"No published port found for internal port {port}. Mapped internal ports: {available}"
+        )
 
 
 class ComposeConfigNetwork(BaseModel):
@@ -198,11 +207,19 @@ class ContainerStatus(BaseModel):
 
     name: str = Field(alias="Name")
     service: str = Field(alias="Service")
-    state: str = Field(default="", alias="State", description="e.g. `running`, `exited`, `created`.")
-    health: str = Field(default="", alias="Health", description="Docker's healthcheck verdict: `healthy`, `unhealthy`, `starting`, or empty when the service declares no healthcheck.")
+    state: str = Field(
+        default="", alias="State", description="e.g. `running`, `exited`, `created`."
+    )
+    health: str = Field(
+        default="",
+        alias="Health",
+        description="Docker's healthcheck verdict: `healthy`, `unhealthy`, `starting`, or empty when the service declares no healthcheck.",
+    )
     exit_code: int | None = Field(default=None, alias="ExitCode")
     image: str | None = Field(default=None, alias="Image")
-    publishers: list[ContainerPublisher] = Field(default_factory=list, alias="Publishers")
+    publishers: list[ContainerPublisher] = Field(
+        default_factory=list, alias="Publishers"
+    )
 
     @property
     def is_running(self) -> bool:
@@ -225,8 +242,12 @@ class ComposeSpec(BaseModel):
     """Docker Compose specification."""
 
     services: dict[str, ComposeConfigService] | None = None
-    networks: Annotated[dict[str, ComposeConfigNetwork] | None, Field(default_factory=dict)]
-    volumes: Annotated[dict[str, ComposeConfigVolume] | None, Field(default_factory=dict)]
+    networks: Annotated[
+        dict[str, ComposeConfigNetwork] | None, Field(default_factory=dict)
+    ]
+    volumes: Annotated[
+        dict[str, ComposeConfigVolume] | None, Field(default_factory=dict)
+    ]
     configs: Any = None
     secrets: Any = None
 
@@ -248,7 +269,9 @@ class ComposeSpec(BaseModel):
         if name:
             service = self.services.get(name)
             if not service:
-                raise ServiceNotFoundError(f"No service found with name {name}. Available services: {sorted(self.services)}")
+                raise ServiceNotFoundError(
+                    f"No service found with name {name}. Available services: {sorted(self.services)}"
+                )
             return service
 
         return self.services[list(self.services.keys())[0]]

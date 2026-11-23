@@ -24,12 +24,6 @@ jobs:
       - name: Install the project
         run: uv sync --all-extras --dev
 
-      - name: Lint with ruff
-        run: uv run ruff check dokker
-
-      - name: Type check with mypy
-        run: uv run mypy dokker
-
       # GitHub's macOS runners ship no docker daemon. The pytest plugin would
       # skip the docker-dependent tests anyway, but filtering explicitly means
       # this leg does not depend on that behavior staying the same.

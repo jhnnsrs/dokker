@@ -21,7 +21,12 @@ def test_docker_cmd_includes_compose_file():
 
 
 def test_docker_cmd_includes_optional_flags():
-    cli = CLI(compose_files=[COMPOSE_FILE], host="tcp://localhost:2375", debug=True, log_level="DEBUG")
+    cli = CLI(
+        compose_files=[COMPOSE_FILE],
+        host="tcp://localhost:2375",
+        debug=True,
+        log_level="DEBUG",
+    )
     cmd = cli.docker_cmd
     assert "--host" in cmd and "tcp://localhost:2375" in cmd
     assert "--debug" in cmd
@@ -149,7 +154,15 @@ async def test_value_flags_are_separate_argv_tokens():
     argv = await _argv_of(lambda: cli.astream_stop(timeout=3))
     assert _tokens_after(argv, "--timeout") == "3"
 
-    argv = await _argv_of(lambda: cli.astream_up(scales={"worker": 3}, pull="always", no_attach_services=["db"], wait=True, wait_timeout=30))
+    argv = await _argv_of(
+        lambda: cli.astream_up(
+            scales={"worker": 3},
+            pull="always",
+            no_attach_services=["db"],
+            wait=True,
+            wait_timeout=30,
+        )
+    )
     assert _tokens_after(argv, "--scale") == "worker=3"
     assert _tokens_after(argv, "--pull") == "always"
     assert _tokens_after(argv, "--no-attach") == "db"
@@ -167,17 +180,25 @@ async def test_run_and_exec_split_string_commands_into_argv():
     """A string command is tokenized, keeping a quoted ``sh -c`` script intact."""
     cli = CLI(compose_files=[COMPOSE_FILE])
 
-    argv = await _argv_of(lambda: cli.astream_run(service="web", command="sh -c 'echo boom >&2; exit 7'"))
+    argv = await _argv_of(
+        lambda: cli.astream_run(service="web", command="sh -c 'echo boom >&2; exit 7'")
+    )
     assert argv[-3:] == ["sh", "-c", "echo boom >&2; exit 7"]
     assert "--no-TTY" in argv and "--quiet-pull" in argv
 
-    argv = await _argv_of(lambda: cli.astream_exec(service="web", command="redis-cli ping"))
+    argv = await _argv_of(
+        lambda: cli.astream_exec(service="web", command="redis-cli ping")
+    )
     assert argv[-3:] == ["web", "redis-cli", "ping"]
 
 
 async def test_exec_passes_env_and_workdir():
     cli = CLI(compose_files=[COMPOSE_FILE])
-    argv = await _argv_of(lambda: cli.astream_exec(service="web", command=["ls"], env={"A": "1"}, workdir="/srv", user="root"))
+    argv = await _argv_of(
+        lambda: cli.astream_exec(
+            service="web", command=["ls"], env={"A": "1"}, workdir="/srv", user="root"
+        )
+    )
     assert _tokens_after(argv, "--env") == "A=1"
     assert _tokens_after(argv, "--workdir") == "/srv"
     assert _tokens_after(argv, "--user") == "root"

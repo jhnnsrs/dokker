@@ -7,7 +7,14 @@ database, which the HTTP-only ``HealthCheck`` cannot express.
 
 import pytest
 
-from dokker.checks import Check, CheckContext, CommandCheck, ContainerCheck, LogCheck, TcpCheck
+from dokker.checks import (
+    Check,
+    CheckContext,
+    CommandCheck,
+    ContainerCheck,
+    LogCheck,
+    TcpCheck,
+)
 from dokker.cli import CLI
 from dokker.command import CommandError
 from dokker.compose_spec import ComposeSpec, ContainerStatus
@@ -79,19 +86,27 @@ async def test_tcp_check_fails_cleanly_when_nothing_is_listening():
 
 
 async def test_command_check_passes_when_the_command_exits_zero():
-    await CommandCheck(service="db", command="pg_isready").aperform(_ctx(exec_lines=["accepting connections"]))
+    await CommandCheck(service="db", command="pg_isready").aperform(
+        _ctx(exec_lines=["accepting connections"])
+    )
 
 
 async def test_command_check_surfaces_stderr_of_a_failing_command():
-    error = CommandError("failed", command="pg_isready", returncode=1, stderr=["no response"])
+    error = CommandError(
+        "failed", command="pg_isready", returncode=1, stderr=["no response"]
+    )
     with pytest.raises(HealthCheckError) as excinfo:
-        await CommandCheck(service="db", command="pg_isready").aperform(_ctx(exec_error=error))
+        await CommandCheck(service="db", command="pg_isready").aperform(
+            _ctx(exec_error=error)
+        )
 
     assert "no response" in str(excinfo.value)
 
 
 async def test_container_check_passes_for_a_healthy_container():
-    status = ContainerStatus(Name="p-db-1", Service="db", State="running", Health="healthy")
+    status = ContainerStatus(
+        Name="p-db-1", Service="db", State="running", Health="healthy"
+    )
     await ContainerCheck(service="db").aperform(_ctx(ps_result=[status]))
 
 
@@ -101,7 +116,9 @@ async def test_container_check_accepts_a_running_container_without_a_healthcheck
 
 
 async def test_container_check_rejects_an_unhealthy_container():
-    status = ContainerStatus(Name="p-db-1", Service="db", State="running", Health="unhealthy")
+    status = ContainerStatus(
+        Name="p-db-1", Service="db", State="running", Health="unhealthy"
+    )
     with pytest.raises(HealthCheckError) as excinfo:
         await ContainerCheck(service="db").aperform(_ctx(ps_result=[status]))
     assert "unhealthy" in str(excinfo.value)
@@ -138,6 +155,14 @@ async def test_log_check_shows_recent_lines_when_the_pattern_is_absent():
 
 
 def test_container_status_parses_compose_capitalised_keys():
-    status = ContainerStatus(**{"Name": "p-web-1", "Service": "web", "State": "running", "Health": "healthy", "Unknown": "ignored"})
+    status = ContainerStatus(
+        **{
+            "Name": "p-web-1",
+            "Service": "web",
+            "State": "running",
+            "Health": "healthy",
+            "Unknown": "ignored",
+        }
+    )
     assert status.service == "web"
     assert status.is_running and status.is_healthy

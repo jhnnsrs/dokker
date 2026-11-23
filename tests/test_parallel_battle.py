@@ -83,7 +83,9 @@ def test_two_local_deployments_in_one_directory_do_not_merge():
             first_port = first.get_port("echo", 5678)
             second_port = second.get_port("echo", 5678)
 
-            assert first_port != second_port, "both deployments resolved to the same container -- the compose projects merged"
+            assert first_port != second_port, (
+                "both deployments resolved to the same container -- the compose projects merged"
+            )
 
             assert "hello from stack A" in _get(f"http://localhost:{first_port}")
             assert "hello from stack B" in _get(f"http://localhost:{second_port}")
@@ -100,15 +102,25 @@ async def test_five_stacks_come_up_concurrently_on_distinct_ports():
     asks docker after the fact -- so the expectation is that all five land on
     different ports.
     """
-    deployments = [testing(PARALLEL_COMPOSE, health_checks=[_echo_check()]) for _ in range(5)]
+    deployments = [
+        testing(PARALLEL_COMPOSE, health_checks=[_echo_check()]) for _ in range(5)
+    ]
 
-    async with deployments[0], deployments[1], deployments[2], deployments[3], deployments[4]:
+    async with (
+        deployments[0],
+        deployments[1],
+        deployments[2],
+        deployments[3],
+        deployments[4],
+    ):
         await asyncio.gather(*(d.aup() for d in deployments))
         await asyncio.gather(*(d.acheck_health() for d in deployments))
 
         ports = await asyncio.gather(*(d.aget_port("echo", 5678) for d in deployments))
 
-        assert len(set(ports)) == len(ports), f"concurrent stacks shared a host port: {ports}"
+        assert len(set(ports)) == len(ports), (
+            f"concurrent stacks shared a host port: {ports}"
+        )
 
         urls = await asyncio.gather(*(d.aget_url("echo", 5678) for d in deployments))
         bodies = await asyncio.gather(*(asyncio.to_thread(_get, url) for url in urls))
@@ -200,7 +212,9 @@ def test_fixed_host_port_collision_reports_a_legible_error():
                     second.up()
 
             message = str(excinfo.value)
-            assert "54321" in message, f"the error never names the port that is taken:\n{message}"
+            assert "54321" in message, (
+                f"the error never names the port that is taken:\n{message}"
+            )
 
             # The stack that got there first is untouched by the loser's failure.
             assert "hello from the fixed-port stack" in _get("http://localhost:54321")

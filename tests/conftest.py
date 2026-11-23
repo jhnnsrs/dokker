@@ -1,13 +1,15 @@
-from typing import Generator, List
-from dokker import testing, HealthCheck, Deployment
-from dokker.pytest_plugin import dokker_progress
+from collections.abc import Generator
+
 import pytest
+
+from dokker import Deployment, HealthCheck, testing
+from dokker.pytest_plugin import dokker_progress
 
 # Needed to test dokker's own pytest plugin; the repo uses pytester nowhere else.
 pytest_plugins = ["pytester"]
 
 
-def pytest_collection_modifyitems(items: List[pytest.Item]) -> None:
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """In *this* repo, `integration` does mean "needs docker".
 
     dokker's own pytest plugin deliberately only skips tests marked
@@ -21,12 +23,10 @@ def pytest_collection_modifyitems(items: List[pytest.Item]) -> None:
             item.add_marker(pytest.mark.requires_docker)
 
 
-
 @pytest.fixture(scope="session")
 def basic_project(request: pytest.FixtureRequest) -> Generator[Deployment, None, None]:
     """A pulled, started, and (on teardown) torn-down lightweight stack."""
     COMPOSE_FILE = "tests/configs/basic-compose.yaml"
-    
 
     with testing(
         COMPOSE_FILE,

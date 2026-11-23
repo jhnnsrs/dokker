@@ -62,7 +62,9 @@ class BaseCheck(BaseModel):
     """Shared fields for the built-in non-HTTP checks."""
 
     service: str = Field(description="The service this check applies to.")
-    max_retries: int = Field(default=3, description="The maximum number of retries before failing.")
+    max_retries: int = Field(
+        default=3, description="The maximum number of retries before failing."
+    )
     timeout: int = Field(default=10, description="Seconds to sleep between retries.")
 
 
@@ -76,7 +78,9 @@ class TcpCheck(BaseCheck):
     """
 
     port: int = Field(description="The container-internal port to connect to.")
-    connect_timeout: float = Field(default=5.0, description="Seconds to wait for the TCP connection.")
+    connect_timeout: float = Field(
+        default=5.0, description="Seconds to wait for the TCP connection."
+    )
 
     async def aperform(self, ctx: CheckContext) -> None:
         """Attempt a TCP connection to the resolved host port."""
@@ -92,7 +96,9 @@ class TcpCheck(BaseCheck):
                 timeout=self.connect_timeout,
             )
         except (TimeoutError, OSError) as e:
-            raise HealthCheckError(f"TCP check for service `{self.service}` could not connect to {host}:{published} (container port {self.port}): {e}") from e
+            raise HealthCheckError(
+                f"TCP check for service `{self.service}` could not connect to {host}:{published} (container port {self.port}): {e}"
+            ) from e
 
         writer.close()
         try:
@@ -112,7 +118,9 @@ class CommandCheck(BaseCheck):
     than a throwaway one.
     """
 
-    command: str | list[str] = Field(description="The command to run inside the container.")
+    command: str | list[str] = Field(
+        description="The command to run inside the container."
+    )
 
     async def aperform(self, ctx: CheckContext) -> None:
         """Run the command in the container and raise unless it exits zero."""
@@ -122,7 +130,10 @@ class CommandCheck(BaseCheck):
             async for _ in ctx.cli.astream_exec(self.service, self.command):
                 pass
         except CommandError as e:
-            raise HealthCheckError(f"Command check for service `{self.service}` failed: `{e.command}` exited with {e.returncode}." + (f"\n\nSTDERR:\n{chr(10).join(e.stderr)}" if e.stderr else "")) from e
+            raise HealthCheckError(
+                f"Command check for service `{self.service}` failed: `{e.command}` exited with {e.returncode}."
+                + (f"\n\nSTDERR:\n{chr(10).join(e.stderr)}" if e.stderr else "")
+            ) from e
 
 
 class ContainerCheck(BaseCheck):
@@ -143,13 +154,29 @@ class ContainerCheck(BaseCheck):
         """Inspect container state and raise unless it is running/healthy."""
         containers = await ctx.cli.aps(services=[self.service], all=True)
         if not containers:
-            raise HealthCheckError(f"Container check for service `{self.service}` found no container. Is the service part of this compose project, and has it been started?")
+            raise HealthCheckError(
+                f"Container check for service `{self.service}` found no container. Is the service part of this compose project, and has it been started?"
+            )
 
         for container in containers:
             if container.state != "running":
-                raise HealthCheckError(f"Container check for service `{self.service}` failed: container `{container.name}` is `{container.state}`" + (f" (exit code {container.exit_code})" if container.exit_code else "") + ".")
-            if self.require_healthy and container.health and container.health not in ("healthy", "none", ""):
-                raise HealthCheckError(f"Container check for service `{self.service}` failed: container `{container.name}` reports health `{container.health}`.")
+                raise HealthCheckError(
+                    f"Container check for service `{self.service}` failed: container `{container.name}` is `{container.state}`"
+                    + (
+                        f" (exit code {container.exit_code})"
+                        if container.exit_code
+                        else ""
+                    )
+                    + "."
+                )
+            if (
+                self.require_healthy
+                and container.health
+                and container.health not in ("healthy", "none", "")
+            ):
+                raise HealthCheckError(
+                    f"Container check for service `{self.service}` failed: container `{container.name}` reports health `{container.health}`."
+                )
 
 
 class LogCheck(BaseCheck):
@@ -160,8 +187,13 @@ class LogCheck(BaseCheck):
     case.
     """
 
-    pattern: str = Field(description="Regular expression searched for in the service's logs.")
-    tail: int | None = Field(default=None, description="Only search the last N lines. None searches all available logs.")
+    pattern: str = Field(
+        description="Regular expression searched for in the service's logs."
+    )
+    tail: int | None = Field(
+        default=None,
+        description="Only search the last N lines. None searches all available logs.",
+    )
 
     async def aperform(self, ctx: CheckContext) -> None:
         """Fetch the service's logs and raise unless the pattern is present."""
@@ -177,4 +209,11 @@ class LogCheck(BaseCheck):
                 return
             lines.append(line)
 
-        raise HealthCheckError(f"Log check for service `{self.service}` did not find /{self.pattern}/ in {len(lines)} log line(s)." + ("\n\nLast lines:\n" + "\n".join(lines[-10:]) if lines else " The service has logged nothing yet."))
+        raise HealthCheckError(
+            f"Log check for service `{self.service}` did not find /{self.pattern}/ in {len(lines)} log line(s)."
+            + (
+                "\n\nLast lines:\n" + "\n".join(lines[-10:])
+                if lines
+                else " The service has logged nothing yet."
+            )
+        )

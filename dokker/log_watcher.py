@@ -1,19 +1,22 @@
+import asyncio
 import inspect
 import re
+from collections.abc import Generator
 from types import TracebackType
+from typing import Self
+
 from koil import unkoil
 from koil.composition import KoiledModel
-import asyncio
-from typing import Self
-from collections.abc import Generator
-from dokker.cli import CLIBearer
 from pydantic import Field
 
+from dokker.cli import CLIBearer
 from dokker.errors import LogWatcherTimeoutError
 from dokker.types import LogFunction
 
 
-def format_log_watcher_message(watcher: "LogWatcher", exc_val: BaseException | None, rich: bool = True) -> str:
+def format_log_watcher_message(
+    watcher: "LogWatcher", exc_val: BaseException | None, rich: bool = True
+) -> str:
     """Formats the log watcher message for the exception."""
     extra_info = map(
         lambda x: x[1] if x[0] == "STDERR" or watcher.capture_stdout else "",
@@ -161,10 +164,14 @@ class LogWatcher(KoiledModel):
 
         if self.wait_for_first_log:
             try:
-                await asyncio.wait_for(self._just_one_log, self.wait_for_first_log_timeout)
+                await asyncio.wait_for(
+                    self._just_one_log, self.wait_for_first_log_timeout
+                )
             except TimeoutError:
                 await self._acancel_watch_task()
-                raise LogWatcherTimeoutError(f"No log line arrived from {self.services or 'any service'} within {self.wait_for_first_log_timeout}s. Pass `wait_for_first_log=False` if the service is expected to be quiet, or raise `wait_for_first_log_timeout`.") from None
+                raise LogWatcherTimeoutError(
+                    f"No log line arrived from {self.services or 'any service'} within {self.wait_for_first_log_timeout}s. Pass `wait_for_first_log=False` if the service is expected to be quiet, or raise `wait_for_first_log_timeout`."
+                ) from None
             except BaseException:
                 # The watch task failed (bad service name, daemon down). Reap it
                 # so the error is not also reported as "never retrieved".
@@ -226,7 +233,9 @@ class LogWatcher(KoiledModel):
 
             remaining = deadline - loop.time()
             if remaining <= 0:
-                raise LogWatcherTimeoutError(f"No log line matching /{pattern}/ arrived from {self.services or 'any service'} within {timeout}s. Captured {len(self.collected_logs)} line(s).")
+                raise LogWatcherTimeoutError(
+                    f"No log line matching /{pattern}/ arrived from {self.services or 'any service'} within {timeout}s. Captured {len(self.collected_logs)} line(s)."
+                )
 
             await asyncio.sleep(min(0.05, remaining))
 
@@ -250,7 +259,12 @@ class LogWatcher(KoiledModel):
             return e
         return None
 
-    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: TracebackType | None) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Asynchronous context manager to exit the log watcher.
 
         The watch task (and its ``docker compose logs --follow`` subprocess) is
@@ -268,7 +282,9 @@ class LogWatcher(KoiledModel):
         watch_error: BaseException | None = None
         try:
             if exc_type is not None and self.append_to_traceback:
-                new_message = format_log_watcher_message(self, exc_val, rich=self.rich_traceback)
+                new_message = format_log_watcher_message(
+                    self, exc_val, rich=self.rich_traceback
+                )
                 try:
                     new_exc = exc_type(new_message)
                 except:  # noqa: E722
@@ -278,7 +294,9 @@ class LogWatcher(KoiledModel):
 
             if self.wait_for_logs:
                 if self._just_one_log is not None:
-                    await asyncio.wait_for(self._just_one_log, self.wait_for_logs_timeout)
+                    await asyncio.wait_for(
+                        self._just_one_log, self.wait_for_logs_timeout
+                    )
         finally:
             watch_error = await self._acancel_watch_task()
 

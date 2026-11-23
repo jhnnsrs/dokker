@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, runtime_checkable
+
 from .cli import CLI
 from .types import LogStream
 

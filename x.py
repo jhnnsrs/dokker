@@ -27,19 +27,28 @@ with testing(
 
     # Runtime container state.
     for container in deployment.ps():
-        print(f"  {container.service:8} {container.state:10} health={container.health or '-'}")
+        print(
+            f"  {container.service:8} {container.state:10} health={container.health or '-'}"
+        )
 
     # Runtime port resolution, and the URL built from it.
     print("echo url:", deployment.get_url("echo", 5678))
 
     # `exec` acts on the running container; `run` creates a throwaway one.
     deployment.exec("redis", "redis-cli set greeting hello")
-    print("redis get:", deployment.exec("redis", "redis-cli get greeting").stdout.strip())
+    print(
+        "redis get:", deployment.exec("redis", "redis-cli get greeting").stdout.strip()
+    )
 
     # Exit codes are reported, not swallowed.
-    result = deployment.run("worker", "sh -c 'echo to-stderr >&2; exit 3'", raise_on_error=False)
+    result = deployment.run(
+        "worker", "sh -c 'echo to-stderr >&2; exit 3'", raise_on_error=False
+    )
     print(f"run exit code: {result.returncode}, stderr: {result.stderr.strip()!r}")
 
     # Wait for a specific log line instead of sleeping.
     with deployment.create_watcher("redis") as watcher:
-        print("awaited log:", watcher.await_log(r"Ready to accept connections", timeout=30))
+        print(
+            "awaited log:",
+            watcher.await_log(r"Ready to accept connections", timeout=30),
+        )

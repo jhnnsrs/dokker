@@ -90,7 +90,8 @@ The rule is that dokker reaps only what it would itself have torn down: a kept s
 
 ```python
 import dokker
-dokker.reap_stale()   # -> ["dokker-test-3f9a12c0", ...]; the project names it removed
+
+dokker.reap_stale()  # -> ["dokker-test-3f9a12c0", ...]; the project names it removed
 ```
 
 ### Ports: `get_port()` and `get_url()`
@@ -108,8 +109,8 @@ services:
 That port is decided at runtime, so it does not appear in `docker compose config` (and therefore not in `deployment.spec`). Resolve it from the running stack instead:
 
 ```python
-port = deployment.get_port("echo", 5678)              # e.g. 32768
-url  = deployment.get_url("echo", 5678, path="/health")
+port = deployment.get_port("echo", 5678)  # e.g. 32768
+url = deployment.get_url("echo", 5678, path="/health")
 ```
 
 `deployment.ps()` returns the runtime state of each container — `state`, `health`, `exit_code` and published ports — which is usually what you want when something has crashed.
@@ -131,7 +132,7 @@ A check answers "is this service ready yet?". `deployment.check_health()` runs t
 If your compose file already declares `healthcheck:` for its services, you may not need checks at all — `deployment.up(wait=True)` uses compose's own readiness mechanism:
 
 ```python
-deployment.up(wait=True, wait_timeout=60)   # returns once everything is healthy
+deployment.up(wait=True, wait_timeout=60)  # returns once everything is healthy
 ```
 
 ### `run()`, `exec()` and exit codes
@@ -146,9 +147,9 @@ For both, a non-zero exit raises a `CommandError` by default; opt out with `rais
 Commands may be given as a string or a list:
 
 ```python
-deployment.exec("redis", "redis-cli ping")            # tokenized shell-style
-deployment.exec("redis", ["redis-cli", "ping"])       # already an argument vector
-deployment.run("worker", "sh -c 'echo hi; exit 1'")   # quoted script stays one argument
+deployment.exec("redis", "redis-cli ping")  # tokenized shell-style
+deployment.exec("redis", ["redis-cli", "ping"])  # already an argument vector
+deployment.run("worker", "sh -c 'echo hi; exit 1'")  # quoted script stays one argument
 ```
 
 Commands are executed directly rather than through a host shell, so shell syntax must go to a shell you name yourself (`sh -c '...'`, as above). A list is passed through untouched, one element per argument — so write `["redis-cli", "ping"]`, not `["redis-cli ping"]`.
@@ -164,20 +165,22 @@ A `Deployment` gets its compose project from a `Project` (`LocalProject` for a c
 ```python
 from dokker import CLI, Deployment, DownOptions, UpOptions
 
+
 class GeneratedProject:  # plus the usual Project methods
-    async def ainititialize(self) -> CLI:
-        ...  # write the compose file, return the CLI that addresses it
+    async def ainititialize(
+        self,
+    ) -> CLI: ...  # write the compose file, return the CLI that addresses it
 
     async def astream_up(self, cli: CLI, options: UpOptions):
         async for line in run_my_tool("up", self.directory):
             yield ("STDOUT", line)
 
-    async def astream_down(self, cli: CLI, options: DownOptions):
-        ...
+    async def astream_down(self, cli: CLI, options: DownOptions): ...
+
 
 with Deployment(project=GeneratedProject(), policy="testing") as deployment:
-    deployment.up()                 # your tool
-    deployment.logs("web")          # compose, on the project your CLI names
+    deployment.up()  # your tool
+    deployment.logs("web")  # compose, on the project your CLI names
     deployment.exec("web", "true")
 # down through your tool, then the project's tear-down
 ```
@@ -218,13 +221,15 @@ from dokker import local, HealthCheck
 deployment = local(
     "docker-compose.yaml",
     health_checks=[
-        HealthCheck(service="echo", url="http://localhost:5678", max_retries=5, timeout=2),
+        HealthCheck(
+            service="echo", url="http://localhost:5678", max_retries=5, timeout=2
+        ),
     ],
 )
 
 with deployment:
-    deployment.up()             # start the stack
-    deployment.check_health()   # block until the echo service answers 200
+    deployment.up()  # start the stack
+    deployment.check_health()  # block until the echo service answers 200
 
     # Watch the echo service's logs while we hit it
     watcher = deployment.create_watcher("echo")
@@ -285,6 +290,7 @@ If you prefer to drive the lifecycle yourself, the builder works directly — a 
 ```python
 from dokker import testing, HealthCheck
 
+
 @pytest.fixture(scope="session")
 def deployment():
     with testing(
@@ -303,6 +309,7 @@ A hand-rolled fixture like that gets the progress line too — wrap the lifecycl
 
 ```python
 from dokker.pytest_plugin import dokker_progress
+
 
 @pytest.fixture(scope="session")
 def deployment(request):
@@ -371,14 +378,16 @@ Every method has an `a`-prefixed async counterpart, and the deployment is also a
 import asyncio
 from dokker import local
 
+
 async def main():
     deployment = local("docker-compose.yaml")
 
     async with deployment:
-        await deployment.aup()                    # start (detached); local policy stops on exit
+        await deployment.aup()  # start (detached); local policy stops on exit
 
         async with deployment.create_watcher("echo"):
-            await deployment.arestart("echo")     # restart while watching its logs
+            await deployment.arestart("echo")  # restart while watching its logs
+
 
 asyncio.run(main())
 ```

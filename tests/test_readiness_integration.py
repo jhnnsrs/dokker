@@ -11,7 +11,14 @@ HTTP-only ``HealthCheck`` cannot express their readiness at all.
 
 import pytest
 
-from dokker import CommandCheck, CommandError, ContainerCheck, LogCheck, TcpCheck, testing
+from dokker import (
+    CommandCheck,
+    CommandError,
+    ContainerCheck,
+    LogCheck,
+    TcpCheck,
+    testing,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -20,7 +27,10 @@ COMPOSE_FILE = "tests/configs/db-compose.yaml"
 
 def test_command_check_waits_for_a_database_to_answer():
     """`redis-cli ping` inside the container -- the service's own readiness tool."""
-    deployment = testing(COMPOSE_FILE, health_checks=[CommandCheck(service="redis", command="redis-cli ping")])
+    deployment = testing(
+        COMPOSE_FILE,
+        health_checks=[CommandCheck(service="redis", command="redis-cli ping")],
+    )
     with deployment:
         deployment.up()
         deployment.inspect()
@@ -62,7 +72,10 @@ def test_up_wait_blocks_until_compose_reports_healthy():
 
 def test_exec_runs_in_the_already_running_container():
     """`exec` sees live state; `run` (a fresh container) would not."""
-    deployment = testing(COMPOSE_FILE, health_checks=[CommandCheck(service="redis", command="redis-cli ping")])
+    deployment = testing(
+        COMPOSE_FILE,
+        health_checks=[CommandCheck(service="redis", command="redis-cli ping")],
+    )
     with deployment:
         deployment.up(wait=True, wait_timeout=60)
         deployment.check_health()
@@ -148,7 +161,11 @@ def test_watcher_on_a_bad_service_terminates_instead_of_hanging():
         else:
             # Terminated without raising: it must at least not claim to have
             # captured logs from a service that does not exist.
-            assert all("no-such-service" not in line for _, line in watcher.collected_logs if "no such service" not in line)
+            assert all(
+                "no-such-service" not in line
+                for _, line in watcher.collected_logs
+                if "no such service" not in line
+            )
 
 
 def test_watcher_on_a_quiet_service_times_out_rather_than_hanging():

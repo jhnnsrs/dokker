@@ -1,18 +1,22 @@
 import os
 import re
 import uuid
-from .checks import Check
-from .deployment import Deployment, PolicyName
 from typing import Literal
+
 from dokker.projects.copy import CopyPathProject
 from dokker.projects.local import LocalProject
 from dokker.types import ValidPath
+
+from .checks import Check
+from .deployment import Deployment, PolicyName
 
 # The file names compose looks for on its own when given no `--file`. A local()
 # of one of these keeps compose's default project name (the directory basename),
 # so dokker and a hand-typed `docker compose up` in that directory agree on the
 # project -- and existing stacks/volumes keep their names.
-COMPOSE_DEFAULT_FILENAMES = frozenset({"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"})
+COMPOSE_DEFAULT_FILENAMES = frozenset(
+    {"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"}
+)
 
 
 def _normalize_project_name(name: str) -> str:
