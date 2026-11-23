@@ -3,3 +3,8 @@
 # vendored code and per-file ignores here; never edit ruff.shared.toml.
 extend = "ruff.shared.toml"
 target-version = "py311"
+
+[lint.per-file-ignores]
+# A project's setup and teardown do their (local, one-off) filesystem work
+# inline, before any container starts or after all have stopped.
+"dokker/projects/*.py" = ["ASYNC240"]

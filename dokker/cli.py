@@ -221,7 +221,7 @@ class CLI(KoiledModel):
         timestamps: bool = False,
         since: str | None = None,
         until: str | None = None,
-        services: str | list[str] = [],
+        services: str | list[str] = [],  # noqa: B006 - public default, only read
     ) -> LogStream:
         """Runs the docker logs command asynchronously."""
         full_cmd = self.docker_cmd + ["logs", "--no-color"]
@@ -333,7 +333,7 @@ class CLI(KoiledModel):
         build: bool = False,
         detach: bool = False,
         abort_on_container_exit: bool = False,
-        scales: dict[str, int] = {},
+        scales: dict[str, int] = {},  # noqa: B006 - public default, only read
         attach_dependencies: bool = False,
         force_recreate: bool = False,
         no_recreate: bool = False,

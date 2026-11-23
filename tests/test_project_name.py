@@ -4,7 +4,7 @@ from dokker import local
 from dokker.builders import derive_project_name
 
 
-def test_default_file_names_keep_composes_own_project_name():
+def test_default_file_names_keep_composes_own_project_name() -> None:
     """What a hand-typed `docker compose up` in that directory would use."""
     assert (
         derive_project_name(
@@ -18,7 +18,7 @@ def test_default_file_names_keep_composes_own_project_name():
     )
 
 
-def test_other_file_names_get_directory_and_stem():
+def test_other_file_names_get_directory_and_stem() -> None:
     assert (
         derive_project_name(["tests/configs/battle/a-compose.yaml"])
         == "battle-a-compose"
@@ -29,7 +29,7 @@ def test_other_file_names_get_directory_and_stem():
     )
 
 
-def test_first_file_decides_like_compose():
+def test_first_file_decides_like_compose() -> None:
     assert (
         derive_project_name(
             [
@@ -41,12 +41,12 @@ def test_first_file_decides_like_compose():
     )
 
 
-def test_name_is_normalised_to_what_compose_accepts():
+def test_name_is_normalised_to_what_compose_accepts() -> None:
     assert derive_project_name(["/x/My Proj/Stack.V2.yml"]) == "my-proj-stack-v2"
     assert derive_project_name(["/x/---/-.yml"]) == "dokker"
 
 
-def test_local_uses_the_derived_name_unless_given_one():
+def test_local_uses_the_derived_name_unless_given_one() -> None:
     assert (
         local("tests/configs/battle/a-compose.yaml").project.project_name
         == "battle-a-compose"

@@ -5,6 +5,8 @@ non-HTTP readiness strategies -- the ones that let a deployment wait for a
 database, which the HTTP-only ``HealthCheck`` cannot express.
 """
 
+from typing import Any
+
 import pytest
 
 from dokker.checks import (
@@ -20,6 +22,7 @@ from dokker.command import CommandError
 from dokker.compose_spec import ComposeSpec, ContainerStatus
 from dokker.deployment import HealthCheck
 from dokker.errors import HealthCheckError, PortNotFoundError
+from dokker.types import LogStream
 
 COMPOSE_FILE = "tests/configs/basic-compose.yaml"
 
@@ -29,33 +32,43 @@ class FakeCLI(CLI):
 
     model_config = {"extra": "allow"}
 
-    async def aport(self, service, private_port, protocol="tcp", index=None):
+    async def aport(
+        self,
+        service: str,
+        private_port: int,
+        protocol: str = "tcp",
+        index: int | None = None,
+    ) -> tuple[str, int]:
         if getattr(self, "port_error", None):
             raise self.port_error
         return getattr(self, "port_result", ("0.0.0.0", 5555))
 
-    async def aps(self, services=None, all=False):
+    async def aps(
+        self, services: list[str] | None = None, all: bool = False
+    ) -> list[ContainerStatus]:
         return getattr(self, "ps_result", [])
 
-    async def astream_exec(self, service, command, **kwargs):
+    async def astream_exec(
+        self, service: str, command: list[str] | str, **kwargs: Any
+    ) -> LogStream:
         if getattr(self, "exec_error", None):
             raise self.exec_error
         for line in getattr(self, "exec_lines", []):
             yield ("STDOUT", line)
 
-    async def astream_docker_logs(self, **kwargs):
+    async def astream_docker_logs(self, **kwargs: Any) -> LogStream:
         for line in getattr(self, "log_lines", []):
             yield ("STDOUT", line)
 
 
-def _ctx(**attrs):
+def _ctx(**attrs: object) -> CheckContext:
     cli = FakeCLI(compose_files=[COMPOSE_FILE])
     for key, value in attrs.items():
         setattr(cli, key, value)
     return CheckContext(spec=ComposeSpec(), cli=cli)
 
 
-def test_builtin_checks_satisfy_the_check_protocol():
+def test_builtin_checks_satisfy_the_check_protocol() -> None:
     """Including the original HTTP check, which must keep working unchanged."""
     for check in (
         HealthCheck(url="http://x", service="web"),
@@ -67,13 +80,13 @@ def test_builtin_checks_satisfy_the_check_protocol():
         assert isinstance(check, Check)
 
 
-async def test_tcp_check_reports_the_resolved_host_port_on_failure():
+async def test_tcp_check_reports_the_resolved_host_port_on_failure() -> None:
     ctx = _ctx(port_error=PortNotFoundError("not published"))
     with pytest.raises(PortNotFoundError):
         await TcpCheck(service="db", port=5432).aperform(ctx)
 
 
-async def test_tcp_check_fails_cleanly_when_nothing_is_listening():
+async def test_tcp_check_fails_cleanly_when_nothing_is_listening() -> None:
     # Port 1 on loopback is not listening in any sane environment.
     ctx = _ctx(port_result=("0.0.0.0", 1))
     with pytest.raises(HealthCheckError) as excinfo:
@@ -85,13 +98,13 @@ async def test_tcp_check_fails_cleanly_when_nothing_is_listening():
     assert "127.0.0.1" in message
 
 
-async def test_command_check_passes_when_the_command_exits_zero():
+async def test_command_check_passes_when_the_command_exits_zero() -> None:
     await CommandCheck(service="db", command="pg_isready").aperform(
         _ctx(exec_lines=["accepting connections"])
     )
 
 
-async def test_command_check_surfaces_stderr_of_a_failing_command():
+async def test_command_check_surfaces_stderr_of_a_failing_command() -> None:
     error = CommandError(
         "failed", command="pg_isready", returncode=1, stderr=["no response"]
     )
@@ -103,19 +116,21 @@ async def test_command_check_surfaces_stderr_of_a_failing_command():
     assert "no response" in str(excinfo.value)
 
 
-async def test_container_check_passes_for_a_healthy_container():
+async def test_container_check_passes_for_a_healthy_container() -> None:
     status = ContainerStatus(
         Name="p-db-1", Service="db", State="running", Health="healthy"
     )
     await ContainerCheck(service="db").aperform(_ctx(ps_result=[status]))
 
 
-async def test_container_check_accepts_a_running_container_without_a_healthcheck():
+async def test_container_check_accepts_a_running_container_without_a_healthcheck() -> (
+    None
+):
     status = ContainerStatus(Name="p-db-1", Service="db", State="running", Health="")
     await ContainerCheck(service="db").aperform(_ctx(ps_result=[status]))
 
 
-async def test_container_check_rejects_an_unhealthy_container():
+async def test_container_check_rejects_an_unhealthy_container() -> None:
     status = ContainerStatus(
         Name="p-db-1", Service="db", State="running", Health="unhealthy"
     )
@@ -124,7 +139,7 @@ async def test_container_check_rejects_an_unhealthy_container():
     assert "unhealthy" in str(excinfo.value)
 
 
-async def test_container_check_reports_the_exit_code_of_a_crashed_container():
+async def test_container_check_reports_the_exit_code_of_a_crashed_container() -> None:
     status = ContainerStatus(Name="p-db-1", Service="db", State="exited", ExitCode=1)
     with pytest.raises(HealthCheckError) as excinfo:
         await ContainerCheck(service="db").aperform(_ctx(ps_result=[status]))
@@ -133,18 +148,18 @@ async def test_container_check_reports_the_exit_code_of_a_crashed_container():
     assert "exited" in message and "exit code 1" in message
 
 
-async def test_container_check_explains_when_no_container_exists():
+async def test_container_check_explains_when_no_container_exists() -> None:
     with pytest.raises(HealthCheckError) as excinfo:
         await ContainerCheck(service="db").aperform(_ctx(ps_result=[]))
     assert "found no container" in str(excinfo.value)
 
 
-async def test_log_check_matches_a_pattern():
+async def test_log_check_matches_a_pattern() -> None:
     ctx = _ctx(log_lines=["starting", "database system is ready to accept connections"])
     await LogCheck(service="db", pattern="ready to accept connections").aperform(ctx)
 
 
-async def test_log_check_shows_recent_lines_when_the_pattern_is_absent():
+async def test_log_check_shows_recent_lines_when_the_pattern_is_absent() -> None:
     ctx = _ctx(log_lines=["starting", "still starting"])
     with pytest.raises(HealthCheckError) as excinfo:
         await LogCheck(service="db", pattern="ready").aperform(ctx)
@@ -154,7 +169,7 @@ async def test_log_check_shows_recent_lines_when_the_pattern_is_absent():
     assert "2 log line(s)" in message
 
 
-def test_container_status_parses_compose_capitalised_keys():
+def test_container_status_parses_compose_capitalised_keys() -> None:
     status = ContainerStatus(
         **{
             "Name": "p-web-1",

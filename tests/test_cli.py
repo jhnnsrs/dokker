@@ -5,14 +5,17 @@ up-front validation that gives early, clear feedback (missing compose files,
 contradictory flags) before any container is ever started.
 """
 
+from collections.abc import Callable
+
 import pytest
 
 from dokker.cli import CLI
+from dokker.types import LogStream
 
 COMPOSE_FILE = "tests/configs/basic-compose.yaml"
 
 
-def test_docker_cmd_includes_compose_file():
+def test_docker_cmd_includes_compose_file() -> None:
     cli = CLI(compose_files=[COMPOSE_FILE])
     cmd = cli.docker_cmd
     assert cmd[:2] == ["docker", "compose"]
@@ -20,7 +23,7 @@ def test_docker_cmd_includes_compose_file():
     assert COMPOSE_FILE in cmd
 
 
-def test_docker_cmd_includes_optional_flags():
+def test_docker_cmd_includes_optional_flags() -> None:
     cli = CLI(
         compose_files=[COMPOSE_FILE],
         host="tcp://localhost:2375",
@@ -33,7 +36,7 @@ def test_docker_cmd_includes_optional_flags():
     assert "--log-level" in cmd and "DEBUG" in cmd
 
 
-def test_docker_cmd_includes_project_name():
+def test_docker_cmd_includes_project_name() -> None:
     # An explicit project name must be emitted as ``--project-name`` so that
     # up/down/ps/logs all target the same, isolated Compose project. The CLI
     # flag wins over any ``name:`` declared inside the compose file.
@@ -43,34 +46,34 @@ def test_docker_cmd_includes_project_name():
     assert cmd[cmd.index("--project-name") + 1] == "my-proj"
 
 
-def test_docker_cmd_omits_project_name_when_unset():
+def test_docker_cmd_omits_project_name_when_unset() -> None:
     # Default behavior is preserved: no name => no flag, Compose derives it.
     cli = CLI(compose_files=[COMPOSE_FILE])
     assert "--project-name" not in cli.docker_cmd
 
 
-def test_missing_compose_file_raises_with_path():
+def test_missing_compose_file_raises_with_path() -> None:
     with pytest.raises(ValueError) as excinfo:
         CLI(compose_files=["nope/does-not-exist.yaml"])
     # The message must name the offending file, not the whole list.
     assert "nope/does-not-exist.yaml" in str(excinfo.value)
 
 
-async def test_up_rejects_quiet_with_stream_logs():
+async def test_up_rejects_quiet_with_stream_logs() -> None:
     cli = CLI(compose_files=[COMPOSE_FILE])
     with pytest.raises(ValueError):
         async for _ in cli.astream_up(quiet=True, stream_logs=True):
             pass
 
 
-async def test_run_rejects_empty_command():
+async def test_run_rejects_empty_command() -> None:
     cli = CLI(compose_files=[COMPOSE_FILE])
     with pytest.raises(ValueError):
         async for _ in cli.astream_run(service="web", command=[]):
             pass
 
 
-def test_docker_cmd_is_stable_across_repeated_access():
+def test_docker_cmd_is_stable_across_repeated_access() -> None:
     """Building the command must not mutate the CLI.
 
     ``docker_cmd`` used to bind to the ``client_call`` field and then ``+=``
@@ -89,7 +92,7 @@ def test_docker_cmd_is_stable_across_repeated_access():
     assert first.count("--file") == 1
 
 
-def test_docker_cmd_emits_profiles_env_file_and_project_directory():
+def test_docker_cmd_emits_profiles_env_file_and_project_directory() -> None:
     """These fields existed but were never emitted, so they silently did nothing."""
     cli = CLI(
         compose_files=[COMPOSE_FILE],
@@ -107,21 +110,21 @@ def test_docker_cmd_emits_profiles_env_file_and_project_directory():
     assert "--compatibility" in cmd
 
 
-def test_env_file_is_not_passed_unless_asked_for():
+def test_env_file_is_not_passed_unless_asked_for() -> None:
     """The old default of ``.env`` made compose fail on projects without one."""
     cli = CLI(compose_files=[COMPOSE_FILE])
     assert "--env-file" not in cli.docker_cmd
 
 
-def _tokens_after(cmd, flag):
+def _tokens_after(cmd: list[str], flag: str) -> str:
     return cmd[cmd.index(flag) + 1]
 
 
-async def _argv_of(agen):
+async def _argv_of(agen: Callable[[], LogStream]) -> list[str]:
     """Capture the argv a CLI method builds, without running docker."""
-    captured = {}
+    captured: dict[str, list[str]] = {}
 
-    async def fake_astream(self, full_cmd):
+    async def fake_astream(self: CLI, full_cmd: list[str]) -> LogStream:
         captured["argv"] = full_cmd
         return
         yield  # pragma: no cover -- makes this an async generator
@@ -138,7 +141,7 @@ async def _argv_of(agen):
     return captured["argv"]
 
 
-async def test_value_flags_are_separate_argv_tokens():
+async def test_value_flags_are_separate_argv_tokens() -> None:
     """Flags and their values must be distinct argv entries.
 
     These were built as single strings like ``f"--timeout {t}"``, which only
@@ -169,14 +172,14 @@ async def test_value_flags_are_separate_argv_tokens():
     assert _tokens_after(argv, "--wait-timeout") == "30"
 
 
-async def test_up_rejects_wait_timeout_without_wait():
+async def test_up_rejects_wait_timeout_without_wait() -> None:
     cli = CLI(compose_files=[COMPOSE_FILE])
     with pytest.raises(ValueError):
         async for _ in cli.astream_up(wait_timeout=5):
             pass
 
 
-async def test_run_and_exec_split_string_commands_into_argv():
+async def test_run_and_exec_split_string_commands_into_argv() -> None:
     """A string command is tokenized, keeping a quoted ``sh -c`` script intact."""
     cli = CLI(compose_files=[COMPOSE_FILE])
 
@@ -192,7 +195,7 @@ async def test_run_and_exec_split_string_commands_into_argv():
     assert argv[-3:] == ["web", "redis-cli", "ping"]
 
 
-async def test_exec_passes_env_and_workdir():
+async def test_exec_passes_env_and_workdir() -> None:
     cli = CLI(compose_files=[COMPOSE_FILE])
     argv = await _argv_of(
         lambda: cli.astream_exec(

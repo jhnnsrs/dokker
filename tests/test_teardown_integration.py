@@ -54,7 +54,7 @@ def _containers_for(project: str) -> list[str]:
     return [line for line in out.splitlines() if line.strip()]
 
 
-def test_down_removes_named_volume_by_default():
+def test_down_removes_named_volume_by_default() -> None:
     """A default ``down`` (down_on_exit) removes the project's named volume."""
     project = _unique("dokker-vol")
     # bare up() under the default "testing" policy must down + remove volumes on exit
@@ -72,7 +72,7 @@ def test_down_removes_named_volume_by_default():
     assert not _containers_for(project), "no containers should survive teardown"
 
 
-def test_down_keeps_volume_when_disabled():
+def test_down_keeps_volume_when_disabled() -> None:
     """With ``remove_volumes=False`` the volume survives the on-exit down."""
     project = _unique("dokker-vol")
     try:
@@ -92,7 +92,7 @@ def test_down_keeps_volume_when_disabled():
             subprocess.run(["docker", "volume", "rm", "-f", name], check=False)
 
 
-def test_body_exception_still_tears_down_containers():
+def test_body_exception_still_tears_down_containers() -> None:
     """An error inside the block must not leak containers."""
 
     class _Boom(Exception):
@@ -110,7 +110,7 @@ def test_body_exception_still_tears_down_containers():
     assert not _volumes_for(project)
 
 
-def test_mirror_full_lifecycle_cleans_up():
+def test_mirror_full_lifecycle_cleans_up() -> None:
     """``mirror`` removes both its containers and its temp-dir copy on exit."""
     project = _unique("dokker-mirror")
     copied = os.path.join(os.getcwd(), ".dokker", project)

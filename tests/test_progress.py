@@ -7,6 +7,7 @@ logger ever sees it.
 """
 
 import io
+from typing import Any
 
 import pytest
 
@@ -52,7 +53,7 @@ class Clock:
         return self.t
 
 
-def make_logger(**kwargs):
+def make_logger(**kwargs: Any) -> ProgressLogger:
     """A ProgressLogger writing to an in-memory buffer, never to a terminal."""
     kwargs.setdefault("writer", io.StringIO())
     kwargs.setdefault("label", "dokkerprog")
@@ -96,7 +97,7 @@ def make_logger(**kwargs):
         ),
     ],
 )
-def test_parses_typed_resource_lines(line, expected):
+def test_parses_typed_resource_lines(line: str, expected: ProgressEvent | None) -> None:
     assert parse_compose_progress(line) == expected
 
 
@@ -117,7 +118,9 @@ def test_parses_typed_resource_lines(line, expected):
         ),
     ],
 )
-def test_parses_layer_lines_without_a_type(line, expected):
+def test_parses_layer_lines_without_a_type(
+    line: str, expected: ProgressEvent | None
+) -> None:
     assert parse_compose_progress(line) == expected
 
 
@@ -132,17 +135,17 @@ def test_parses_layer_lines_without_a_type(line, expected):
         "single",
     ],
 )
-def test_ignores_anything_it_does_not_recognise(line):
+def test_ignores_anything_it_does_not_recognise(line: str) -> None:
     """Unparseable input is dropped, never raised on, never rendered."""
     assert parse_compose_progress(line) is None
 
 
-def test_prose_is_not_mistaken_for_a_layer_line():
+def test_prose_is_not_mistaken_for_a_layer_line() -> None:
     """`Error response ...` has two tokens but no hex id, so it is not a layer."""
     assert parse_compose_progress("Error response from daemon") is None
 
 
-def test_strips_ansi_before_parsing():
+def test_strips_ansi_before_parsing() -> None:
     """FORCE_COLOR makes compose emit escapes even on a pipe."""
     coloured = "\x1b[34mContainer\x1b[0m dokkerprog-redis-1 \x1b[32mHealthy\x1b[0m"
     assert strip_ansi(coloured) == "Container dokkerprog-redis-1 Healthy"
@@ -154,7 +157,7 @@ def test_strips_ansi_before_parsing():
 # ---------------------------------------------------------------- state
 
 
-def test_up_sequence_reaches_full_fraction():
+def test_up_sequence_reaches_full_fraction() -> None:
     logger = make_logger()
     logger.phase("up")
     for line in UP_LINES:
@@ -166,7 +169,7 @@ def test_up_sequence_reaches_full_fraction():
     assert "redis Healthy" in rendered
 
 
-def test_fraction_does_not_go_backwards_when_wait_reports_waiting():
+def test_fraction_does_not_go_backwards_when_wait_reports_waiting() -> None:
     """`up --wait` emits Started then Waiting; the count must latch."""
     logger = make_logger()
     logger.phase("up")
@@ -177,7 +180,7 @@ def test_fraction_does_not_go_backwards_when_wait_reports_waiting():
     assert "redis Waiting" in logger.render()
 
 
-def test_created_is_not_terminal_during_up():
+def test_created_is_not_terminal_during_up() -> None:
     """A created-but-not-started container is not progress towards `up`."""
     logger = make_logger()
     logger.phase("up")
@@ -185,7 +188,7 @@ def test_created_is_not_terminal_during_up():
     assert "[0/1]" in logger.render()
 
 
-def test_pull_counts_images_and_never_layers():
+def test_pull_counts_images_and_never_layers() -> None:
     """Hundreds of layer lines must not become hundreds of rows."""
     logger = make_logger()
     logger.phase("pull")
@@ -199,7 +202,7 @@ def test_pull_counts_images_and_never_layers():
     assert "17a39c0ba978 Pull complete" in rendered
 
 
-def test_phase_change_resets_the_fraction_and_timer():
+def test_phase_change_resets_the_fraction_and_timer() -> None:
     clock = Clock()
     logger = make_logger(now=clock)
     logger.phase("pull")
@@ -214,7 +217,7 @@ def test_phase_change_resets_the_fraction_and_timer():
     assert "[0/1]" in logger.render()
 
 
-def test_unsettled_services_are_listed_first():
+def test_unsettled_services_are_listed_first() -> None:
     logger = make_logger()
     logger.phase("up")
     logger.on_up(("STDERR", "Container dokkerprog-echo-1 Started"))
@@ -224,7 +227,7 @@ def test_unsettled_services_are_listed_first():
     assert rendered.index("redis Creating") < rendered.index("echo Started")
 
 
-def test_down_and_stop_have_their_own_terminal_statuses():
+def test_down_and_stop_have_their_own_terminal_statuses() -> None:
     logger = make_logger()
     logger.phase("stop")
     logger.on_stop(("STDERR", "Container dokkerprog-redis-1 Stopping"))
@@ -237,7 +240,7 @@ def test_down_and_stop_have_their_own_terminal_statuses():
     assert "[1/1]" in logger.render()
 
 
-def test_service_logs_are_not_folded_into_the_line():
+def test_service_logs_are_not_folded_into_the_line() -> None:
     """on_logs carries container output, which would turn this into a log tail."""
     logger = make_logger()
     logger.phase("up")
@@ -246,7 +249,7 @@ def test_service_logs_are_not_folded_into_the_line():
     assert logger.render() == before
 
 
-def test_no_fraction_is_shown_for_phases_that_cannot_complete_one():
+def test_no_fraction_is_shown_for_phases_that_cannot_complete_one() -> None:
     """`inspect`/`health` define no terminal status, so nothing can ever latch.
 
     Showing `[0/3]` next to three rows all reading `Started` is worse than
@@ -264,7 +267,7 @@ def test_no_fraction_is_shown_for_phases_that_cannot_complete_one():
     assert "redis Started" in rendered
 
 
-def test_elapsed_time_survives_truncation():
+def test_elapsed_time_survives_truncation() -> None:
     """On a narrow terminal the service list is cut, never the clock."""
     clock = Clock()
     logger = make_logger(width=46, now=clock)
@@ -278,7 +281,7 @@ def test_elapsed_time_survives_truncation():
     assert rendered.endswith("...")
 
 
-def test_elapsed_time_advances_without_any_events():
+def test_elapsed_time_advances_without_any_events() -> None:
     """The readiness phase emits nothing; the line must still show progress."""
     clock = Clock()
     logger = make_logger(now=clock)
@@ -291,21 +294,21 @@ def test_elapsed_time_advances_without_any_events():
 # ---------------------------------------------------------------- rendering
 
 
-def test_name_shortening_drops_project_prefix_and_replica_index():
+def test_name_shortening_drops_project_prefix_and_replica_index() -> None:
     logger = make_logger(label="dokker-test-a1b2c3d4")
     logger.phase("up")
     logger.on_up(("STDERR", "Container dokker-test-a1b2c3d4-echo-1 Started"))
     assert "echo Started" in logger.render()
 
 
-def test_unrelated_container_names_are_left_alone():
+def test_unrelated_container_names_are_left_alone() -> None:
     logger = make_logger(label="dokkerprog")
     logger.phase("up")
     logger.on_up(("STDERR", "Container someother-thing Started"))
     assert "someother-thing Started" in logger.render()
 
 
-def test_line_is_truncated_to_fit_the_terminal():
+def test_line_is_truncated_to_fit_the_terminal() -> None:
     """A wrapped line would break in-place redrawing."""
     logger = make_logger(width=40)
     logger.phase("up")
@@ -317,7 +320,7 @@ def test_line_is_truncated_to_fit_the_terminal():
     assert rendered.endswith("...")
 
 
-def test_ascii_fallback_when_the_writer_cannot_encode_braille():
+def test_ascii_fallback_when_the_writer_cannot_encode_braille() -> None:
     class AsciiWriter(io.StringIO):
         encoding = "ascii"
 
@@ -325,7 +328,7 @@ def test_ascii_fallback_when_the_writer_cannot_encode_braille():
     assert logger.render()[0] in "|/-\\"
 
 
-def test_braille_used_when_the_writer_supports_it():
+def test_braille_used_when_the_writer_supports_it() -> None:
     class Utf8Writer(io.StringIO):
         encoding = "utf-8"
 
@@ -333,7 +336,7 @@ def test_braille_used_when_the_writer_supports_it():
     assert logger.render()[0] in "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
-def test_draw_redraws_in_place_and_stop_erases():
+def test_draw_redraws_in_place_and_stop_erases() -> None:
     buffer = io.StringIO()
     logger = make_logger(writer=buffer)
     logger.phase("up")
@@ -347,7 +350,7 @@ def test_draw_redraws_in_place_and_stop_erases():
     assert "\n" not in written
 
 
-def test_spinner_animates_between_frames():
+def test_spinner_animates_between_frames() -> None:
     logger = make_logger()
     logger.phase("up")
     first = logger.render()
@@ -355,12 +358,12 @@ def test_spinner_animates_between_frames():
     assert logger.render()[0] != first[0]
 
 
-def test_stop_without_start_is_a_noop():
+def test_stop_without_start_is_a_noop() -> None:
     logger = make_logger()
     logger.stop()  # must not raise or hang
 
 
-def test_ticker_thread_starts_draws_and_is_joined_on_stop():
+def test_ticker_thread_starts_draws_and_is_joined_on_stop() -> None:
     buffer = io.StringIO()
     logger = make_logger(writer=buffer, interval=0.01)
     logger.phase("up")
@@ -384,7 +387,7 @@ def test_ticker_thread_starts_draws_and_is_joined_on_stop():
     assert settled.endswith("\r\x1b[K")
 
 
-def test_writes_to_a_closed_stream_are_swallowed():
+def test_writes_to_a_closed_stream_are_swallowed() -> None:
     """A torn-down capture must never fail the run."""
     buffer = io.StringIO()
     logger = make_logger(writer=buffer)

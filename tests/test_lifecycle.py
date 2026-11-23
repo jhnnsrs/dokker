@@ -20,6 +20,8 @@ import asyncio
 import io
 import logging
 import os
+from collections.abc import Awaitable, Callable, Iterable, Mapping
+from typing import Any, TextIO
 
 import pytest
 
@@ -35,9 +37,11 @@ from dokker import (
     StopsItself,
     UpOptions,
 )
+from dokker.cli import CLI
 from dokker.compose_spec import ComposeSpec
 from dokker.errors import NotInitializedError, TearDownError
 from dokker.loggers.progress import ProgressLogger
+from dokker.types import LogStream
 
 
 # --------------------------------------------------------------------------- #
@@ -50,7 +54,7 @@ class Recorder:
         self.events: list[str] = []
         self.kwargs: dict[str, dict] = {}
 
-    def add(self, name: str, **kw) -> None:
+    def add(self, name: str, **kw: object) -> None:
         self.events.append(name)
         if kw:
             self.kwargs[name] = kw
@@ -71,13 +75,13 @@ class RecordingCLI:
         self,
         rec: Recorder,
         *,
-        fail_on=None,
-        sleep_on=None,
+        fail_on: Iterable[str] | None = None,
+        sleep_on: Mapping[str, float] | None = None,
         run_returncode: int = 0,
-        run_stdout=("hello world",),
-        run_stderr=(),
-        up_lines=("up line",),
-        pull_lines=("pull line",),
+        run_stdout: Iterable[str] = ("hello world",),
+        run_stderr: Iterable[str] = (),
+        up_lines: Iterable[str] = ("up line",),
+        pull_lines: Iterable[str] = ("pull line",),
     ) -> None:
         self.rec = rec
         self.fail_on = set(fail_on or ())
@@ -107,7 +111,7 @@ class RecordingCLI:
                 stderr=[f"{name} boom"],
             )
 
-    async def astream_up(self, detach: bool = True, **kw):
+    async def astream_up(self, detach: bool = True, **kw: object) -> LogStream:
         self.rec.add("astream_up", detach=detach)
         await self._maybe("astream_up")
         for line in self.up_lines:
@@ -117,11 +121,11 @@ class RecordingCLI:
     async def astream_down(
         self,
         remove_orphans: bool = False,
-        remove_images=None,
-        timeout=None,
+        remove_images: str | None = None,
+        timeout: int | None = None,
         volumes: bool = False,
-        **kw,
-    ):
+        **kw: object,
+    ) -> LogStream:
         self.rec.add(
             "astream_down",
             remove_orphans=remove_orphans,
@@ -133,26 +137,39 @@ class RecordingCLI:
         yield ("STDOUT", "down line")
         self._maybe_fail("astream_down")
 
-    async def astream_stop(self, services=None, timeout=None, **kw):
+    async def astream_stop(
+        self,
+        services: str | list[str] | None = None,
+        timeout: int | None = None,
+        **kw: object,
+    ) -> LogStream:
         self.rec.add("astream_stop", timeout=timeout)
         await self._maybe("astream_stop")
         yield ("STDOUT", "stop line")
         self._maybe_fail("astream_stop")
 
-    async def astream_pull(self, **kw):
+    async def astream_pull(self, **kw: object) -> LogStream:
         self.rec.add("astream_pull")
         for line in self.pull_lines:
             yield ("STDERR", line)
 
-    async def astream_restart(self, services=None, **kw):
+    async def astream_restart(
+        self, services: str | list[str] | None = None, **kw: object
+    ) -> LogStream:
         self.rec.add("astream_restart")
         yield ("STDOUT", "restart line")
 
-    async def astream_docker_logs(self, **kw):
+    async def astream_docker_logs(self, **kw: object) -> LogStream:
         self.rec.add("astream_docker_logs")
         yield ("STDOUT", "logs line")
 
-    async def astream_run(self, service: str, command, remove: bool = True, **kw):
+    async def astream_run(
+        self,
+        service: str,
+        command: list[str] | str,
+        remove: bool = True,
+        **kw: object,
+    ) -> LogStream:
         self.rec.add("astream_run", service=service)
         for line in self.run_stdout:
             yield ("STDOUT", line)
@@ -184,7 +201,7 @@ class RecordingCLI:
 class RecordingProject:
     """A fake Project implementing the full protocol, recording every hook."""
 
-    def __init__(self, rec: Recorder, **cli_kwargs) -> None:
+    def __init__(self, rec: Recorder, **cli_kwargs: Any) -> None:
         self.rec = rec
         self._cli_kwargs = cli_kwargs
 
@@ -192,7 +209,7 @@ class RecordingProject:
         self.rec.add("ainititialize")
         return RecordingCLI(self.rec, **self._cli_kwargs)
 
-    async def atear_down(self, cli) -> None:
+    async def atear_down(self, cli: CLI) -> None:
         self.rec.add("atear_down")
 
     async def abefore_pull(self) -> None:
@@ -214,12 +231,12 @@ class RecordingProject:
 def make_deployment(
     rec: Recorder,
     *,
-    fail_on=None,
-    sleep_on=None,
-    run_returncode=0,
-    run_stdout=("hello world",),
-    run_stderr=(),
-    **deployment_kwargs,
+    fail_on: Iterable[str] | None = None,
+    sleep_on: Mapping[str, float] | None = None,
+    run_returncode: int = 0,
+    run_stdout: Iterable[str] = ("hello world",),
+    run_stderr: Iterable[str] = (),
+    **deployment_kwargs: Any,
 ) -> Deployment:
     project = RecordingProject(
         rec,
@@ -232,7 +249,7 @@ def make_deployment(
     return Deployment(project=project, **deployment_kwargs)
 
 
-def _appender(target: list, value: str):
+def _appender(target: list[str], value: str) -> Callable[[], Awaitable[None]]:
     """Return a zero-arg cleanup coroutine factory that appends ``value``."""
 
     async def _cleanup() -> None:
@@ -244,7 +261,7 @@ def _appender(target: list, value: str):
 # --------------------------------------------------------------------------- #
 # Enter is inert
 # --------------------------------------------------------------------------- #
-async def test_enter_does_nothing():
+async def test_enter_does_nothing() -> None:
     rec = Recorder()
     d = make_deployment(rec)
     async with d:
@@ -259,7 +276,7 @@ async def test_enter_does_nothing():
 # --------------------------------------------------------------------------- #
 # Cleanup registration + LIFO
 # --------------------------------------------------------------------------- #
-async def test_manual_cleanups_run_in_lifo_order():
+async def test_manual_cleanups_run_in_lifo_order() -> None:
     rec = Recorder()
     order: list[str] = []
     async with make_deployment(rec) as d:
@@ -268,7 +285,7 @@ async def test_manual_cleanups_run_in_lifo_order():
     assert order == ["second", "first"]
 
 
-async def test_up_down_on_exit_downs_on_exit():
+async def test_up_down_on_exit_downs_on_exit() -> None:
     rec = Recorder()
     async with make_deployment(rec) as d:
         await d.aup(down_on_exit=True)
@@ -277,7 +294,7 @@ async def test_up_down_on_exit_downs_on_exit():
     assert "astream_stop" not in rec.events
 
 
-async def test_up_stop_on_exit_stops_not_downs():
+async def test_up_stop_on_exit_stops_not_downs() -> None:
     rec = Recorder()
     async with make_deployment(rec) as d:
         await d.aup(stop_on_exit=True)
@@ -288,7 +305,9 @@ async def test_up_stop_on_exit_stops_not_downs():
 # --------------------------------------------------------------------------- #
 # Owner labels / stale reaping follow the `down` promise and nothing else
 # --------------------------------------------------------------------------- #
-async def test_up_with_down_reaps_then_labels_then_downs_with_override_still_listed():
+async def test_up_with_down_reaps_then_labels_then_downs_with_override_still_listed() -> (
+    None
+):
     rec = Recorder()
     async with make_deployment(rec) as d:
         await d.aup(down_on_exit=True)
@@ -304,9 +323,9 @@ async def test_up_with_down_reaps_then_labels_then_downs_with_override_still_lis
             if str(f).endswith("dokker-owner.override.yaml")
         ]
         assert len(override) == 1
-        assert os.path.exists(override[0])
+        assert os.path.exists(override[0])  # noqa: ASYNC240 - asserting on a file the code under test wrote
         # The override stamps exactly the resolved services.
-        text = open(override[0], encoding="utf-8").read()
+        text = open(override[0], encoding="utf-8").read()  # noqa: ASYNC230 - as above
         assert '"echo":' in text and '"worker":' in text
         assert f'"dokker.owner.pid": "{os.getpid()}"' in text
         # Register a probe *after* up so, in LIFO order, it runs before the down.
@@ -322,11 +341,11 @@ async def test_up_with_down_reaps_then_labels_then_downs_with_override_still_lis
     )
     assert rec.count("astream_down") == 1
     # ...and the file and its directory are gone afterwards.
-    assert not os.path.exists(override[0])
+    assert not os.path.exists(override[0])  # noqa: ASYNC240 - asserting on a file the code under test wrote
     assert cli.compose_files == ["docker-compose.yaml"]
 
 
-async def test_up_twice_labels_once():
+async def test_up_twice_labels_once() -> None:
     rec = Recorder()
     async with make_deployment(rec) as d:
         await d.aup(down_on_exit=True)
@@ -335,7 +354,7 @@ async def test_up_twice_labels_once():
         assert sum(1 for f in d._cli.compose_files if "dokker-owner" in str(f)) == 1
 
 
-async def test_up_with_stop_or_nothing_neither_reaps_nor_labels():
+async def test_up_with_stop_or_nothing_neither_reaps_nor_labels() -> None:
     """A stack dokker will not remove is never a reaping candidate, so it gets no owner label."""
     for kwargs in ({"stop_on_exit": True}, {}, {"down_on_exit": False}):
         rec = Recorder()
@@ -346,7 +365,7 @@ async def test_up_with_stop_or_nothing_neither_reaps_nor_labels():
             assert d._cli.compose_files == ["docker-compose.yaml"], kwargs
 
 
-async def test_reap_stale_false_still_labels():
+async def test_reap_stale_false_still_labels() -> None:
     rec = Recorder()
     async with make_deployment(rec, reap_stale=False) as d:
         await d.aup(down_on_exit=True)
@@ -354,7 +373,9 @@ async def test_reap_stale_false_still_labels():
         assert rec.count("aconfig_services") == 1
 
 
-async def test_labelling_failure_only_warns_and_up_proceeds(caplog):
+async def test_labelling_failure_only_warns_and_up_proceeds(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     rec = Recorder()
     with caplog.at_level(logging.WARNING, logger="dokker.deployment"):
         async with make_deployment(rec, fail_on={"aconfig_services"}) as d:
@@ -365,7 +386,7 @@ async def test_labelling_failure_only_warns_and_up_proceeds(caplog):
     assert "will not be reaped automatically" in caplog.text
 
 
-async def test_bare_up_registers_no_teardown():
+async def test_bare_up_registers_no_teardown() -> None:
     rec = Recorder()
     async with make_deployment(rec) as d:
         await d.aup()
@@ -373,7 +394,7 @@ async def test_bare_up_registers_no_teardown():
     assert "astream_stop" not in rec.events
 
 
-async def test_down_runs_before_project_teardown():
+async def test_down_runs_before_project_teardown() -> None:
     """Containers must come down before the project (temp dir) is removed."""
     rec = Recorder()
     async with make_deployment(rec, policy="testing") as d:
@@ -385,7 +406,7 @@ async def test_down_runs_before_project_teardown():
 # --------------------------------------------------------------------------- #
 # Mutually exclusive exit hooks
 # --------------------------------------------------------------------------- #
-async def test_up_both_hooks_raises_and_does_not_up():
+async def test_up_both_hooks_raises_and_does_not_up() -> None:
     rec = Recorder()
     async with make_deployment(rec) as d:
         with pytest.raises(ValueError):
@@ -393,7 +414,7 @@ async def test_up_both_hooks_raises_and_does_not_up():
     assert "astream_up" not in rec.events
 
 
-def test_sync_up_both_hooks_raises():
+def test_sync_up_both_hooks_raises() -> None:
     rec = Recorder()
     with make_deployment(rec) as d:
         with pytest.raises(ValueError):
@@ -403,7 +424,7 @@ def test_sync_up_both_hooks_raises():
 # --------------------------------------------------------------------------- #
 # Dedupe
 # --------------------------------------------------------------------------- #
-async def test_double_down_on_exit_downs_once():
+async def test_double_down_on_exit_downs_once() -> None:
     rec = Recorder()
     async with make_deployment(rec) as d:
         await d.aup(down_on_exit=True)
@@ -414,7 +435,7 @@ async def test_double_down_on_exit_downs_once():
 # --------------------------------------------------------------------------- #
 # Policy drives the default exit action; per-call args override
 # --------------------------------------------------------------------------- #
-async def test_policy_testing_bare_up_downs_on_exit():
+async def test_policy_testing_bare_up_downs_on_exit() -> None:
     rec = Recorder()
     async with make_deployment(rec, policy="testing") as d:
         await d.aup()
@@ -422,7 +443,7 @@ async def test_policy_testing_bare_up_downs_on_exit():
     assert "astream_stop" not in rec.events
 
 
-async def test_policy_local_bare_up_stops_on_exit():
+async def test_policy_local_bare_up_stops_on_exit() -> None:
     rec = Recorder()
     async with make_deployment(rec, policy="local") as d:
         await d.aup()
@@ -431,7 +452,7 @@ async def test_policy_local_bare_up_stops_on_exit():
 
 
 @pytest.mark.parametrize("policy", ["monitoring", "manual"])
-async def test_policy_no_teardown_bare_up_registers_nothing(policy):
+async def test_policy_no_teardown_bare_up_registers_nothing(policy: str) -> None:
     rec = Recorder()
     async with make_deployment(rec, policy=policy) as d:
         await d.aup()
@@ -439,7 +460,7 @@ async def test_policy_no_teardown_bare_up_registers_nothing(policy):
     assert "astream_stop" not in rec.events
 
 
-async def test_bare_deployment_defaults_to_manual_policy():
+async def test_bare_deployment_defaults_to_manual_policy() -> None:
     rec = Recorder()
     async with make_deployment(rec) as d:  # no policy given
         await d.aup()
@@ -447,7 +468,7 @@ async def test_bare_deployment_defaults_to_manual_policy():
     assert "astream_stop" not in rec.events
 
 
-async def test_local_override_stop_beats_testing_policy():
+async def test_local_override_stop_beats_testing_policy() -> None:
     rec = Recorder()
     async with make_deployment(rec, policy="testing") as d:
         await d.aup(stop_on_exit=True)
@@ -455,7 +476,7 @@ async def test_local_override_stop_beats_testing_policy():
     assert "astream_down" not in rec.events
 
 
-async def test_local_override_disables_teardown_under_testing_policy():
+async def test_local_override_disables_teardown_under_testing_policy() -> None:
     rec = Recorder()
     async with make_deployment(rec, policy="testing") as d:
         await d.aup(down_on_exit=False)
@@ -463,7 +484,7 @@ async def test_local_override_disables_teardown_under_testing_policy():
     assert "astream_stop" not in rec.events
 
 
-async def test_local_override_down_beats_local_policy():
+async def test_local_override_down_beats_local_policy() -> None:
     rec = Recorder()
     async with make_deployment(rec, policy="local") as d:
         await d.aup(down_on_exit=True)
@@ -474,21 +495,21 @@ async def test_local_override_down_beats_local_policy():
 # --------------------------------------------------------------------------- #
 # Project teardown auto-registration
 # --------------------------------------------------------------------------- #
-async def test_init_inside_context_auto_registers_teardown():
+async def test_init_inside_context_auto_registers_teardown() -> None:
     rec = Recorder()
     async with make_deployment(rec, policy="testing") as d:
         await d.ainspect()  # triggers init inside the context
     assert rec.count("atear_down") == 1
 
 
-async def test_init_inside_context_does_not_teardown_under_manual_policy():
+async def test_init_inside_context_does_not_teardown_under_manual_policy() -> None:
     rec = Recorder()
     async with make_deployment(rec, policy="manual") as d:
         await d.ainspect()  # init happens, but the policy does not tear down
     assert "atear_down" not in rec.events
 
 
-async def test_init_outside_context_does_not_auto_teardown():
+async def test_init_outside_context_does_not_auto_teardown() -> None:
     rec = Recorder()
     d = make_deployment(rec, policy="testing")
     await d.ainitialize()  # no `with` — not entered
@@ -496,7 +517,7 @@ async def test_init_outside_context_does_not_auto_teardown():
     assert d._cleanup_stack == []
 
 
-async def test_project_teardown_registered_once_per_context():
+async def test_project_teardown_registered_once_per_context() -> None:
     rec = Recorder()
     async with make_deployment(rec, policy="testing") as d:
         await d.ainitialize()
@@ -516,7 +537,7 @@ async def test_project_teardown_registered_once_per_context():
         ("adown", "abefore_down"),
     ],
 )
-async def test_before_hook_fires_from_method(method, hook):
+async def test_before_hook_fires_from_method(method: str, hook: str) -> None:
     rec = Recorder()
     d = make_deployment(rec)
     await getattr(d, method)()
@@ -526,21 +547,21 @@ async def test_before_hook_fires_from_method(method, hook):
 # --------------------------------------------------------------------------- #
 # down default flags (orphans / volumes) and timeout threading
 # --------------------------------------------------------------------------- #
-async def test_down_removes_orphans_and_volumes_by_default():
+async def test_down_removes_orphans_and_volumes_by_default() -> None:
     rec = Recorder()
     await make_deployment(rec).adown()
     assert rec.kwargs["astream_down"]["volumes"] is True
     assert rec.kwargs["astream_down"]["remove_orphans"] is True
 
 
-async def test_down_flags_can_be_overridden_per_call():
+async def test_down_flags_can_be_overridden_per_call() -> None:
     rec = Recorder()
     await make_deployment(rec).adown(volumes=False, remove_orphans=False)
     assert rec.kwargs["astream_down"]["volumes"] is False
     assert rec.kwargs["astream_down"]["remove_orphans"] is False
 
 
-async def test_down_flags_respect_deployment_config():
+async def test_down_flags_respect_deployment_config() -> None:
     rec = Recorder()
     await make_deployment(
         rec, remove_volumes_on_down=False, remove_orphans_on_down=False
@@ -549,13 +570,13 @@ async def test_down_flags_respect_deployment_config():
     assert rec.kwargs["astream_down"]["remove_orphans"] is False
 
 
-async def test_down_keeps_images_unless_told_otherwise():
+async def test_down_keeps_images_unless_told_otherwise() -> None:
     rec = Recorder()
     await make_deployment(rec).adown()
     assert rec.kwargs["astream_down"]["remove_images"] is None
 
 
-async def test_down_removes_the_images_the_deployment_is_configured_to():
+async def test_down_removes_the_images_the_deployment_is_configured_to() -> None:
     rec = Recorder()
     deployment = make_deployment(rec, remove_images_on_down="local")
     await deployment.adown()
@@ -567,7 +588,7 @@ async def test_down_removes_the_images_the_deployment_is_configured_to():
     assert rec.kwargs["astream_down"]["remove_images"] == "all"
 
 
-async def test_shutdown_timeout_threads_into_stop_and_down():
+async def test_shutdown_timeout_threads_into_stop_and_down() -> None:
     rec = Recorder()
     d = make_deployment(rec, shutdown_timeout=7)
     await d.adown()
@@ -576,7 +597,7 @@ async def test_shutdown_timeout_threads_into_stop_and_down():
     assert rec.kwargs["astream_stop"]["timeout"] == 7
 
 
-async def test_explicit_timeout_overrides_shutdown_timeout():
+async def test_explicit_timeout_overrides_shutdown_timeout() -> None:
     rec = Recorder()
     await make_deployment(rec, shutdown_timeout=7).adown(timeout=2)
     assert rec.kwargs["astream_down"]["timeout"] == 2
@@ -589,7 +610,7 @@ class _Boom(Exception):
     pass
 
 
-async def test_body_exception_still_tears_down_and_propagates():
+async def test_body_exception_still_tears_down_and_propagates() -> None:
     rec = Recorder()
     with pytest.raises(_Boom):
         async with make_deployment(rec) as d:
@@ -598,14 +619,16 @@ async def test_body_exception_still_tears_down_and_propagates():
     assert "astream_down" in rec.events
 
 
-async def test_teardown_error_raises_on_clean_exit():
+async def test_teardown_error_raises_on_clean_exit() -> None:
     rec = Recorder()
     with pytest.raises(CommandError):
         async with make_deployment(rec, fail_on={"astream_down"}) as d:
             await d.aup(down_on_exit=True)
 
 
-async def test_teardown_error_suppressed_while_body_raises(caplog):
+async def test_teardown_error_suppressed_while_body_raises(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     rec = Recorder()
     with caplog.at_level(logging.WARNING):
         with pytest.raises(_Boom):
@@ -615,7 +638,7 @@ async def test_teardown_error_suppressed_while_body_raises(caplog):
     assert any("teardown failed" in r.getMessage().lower() for r in caplog.records)
 
 
-async def test_teardown_timeout_raises_on_clean_exit():
+async def test_teardown_timeout_raises_on_clean_exit() -> None:
     rec = Recorder()
     with pytest.raises(TearDownError):
         async with make_deployment(
@@ -624,7 +647,9 @@ async def test_teardown_timeout_raises_on_clean_exit():
             await d.aup(down_on_exit=True)
 
 
-async def test_teardown_timeout_suppressed_while_body_raises(caplog):
+async def test_teardown_timeout_suppressed_while_body_raises(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     rec = Recorder()
     with caplog.at_level(logging.WARNING):
         with pytest.raises(_Boom):
@@ -639,7 +664,7 @@ async def test_teardown_timeout_suppressed_while_body_raises(caplog):
 # --------------------------------------------------------------------------- #
 # State reset / re-entrancy
 # --------------------------------------------------------------------------- #
-async def test_state_reset_and_reentrancy():
+async def test_state_reset_and_reentrancy() -> None:
     rec = Recorder()
     d = make_deployment(rec)
     async with d:
@@ -660,7 +685,7 @@ async def test_state_reset_and_reentrancy():
 # --------------------------------------------------------------------------- #
 # auto_initialize=False
 # --------------------------------------------------------------------------- #
-async def test_auto_initialize_false_raises_without_init():
+async def test_auto_initialize_false_raises_without_init() -> None:
     rec = Recorder()
     async with make_deployment(rec, auto_initialize=False) as d:
         with pytest.raises(NotInitializedError):
@@ -670,7 +695,7 @@ async def test_auto_initialize_false_raises_without_init():
 # --------------------------------------------------------------------------- #
 # run() exit-code handling (deterministic, no docker)
 # --------------------------------------------------------------------------- #
-async def test_run_success_returns_stdout_and_zero():
+async def test_run_success_returns_stdout_and_zero() -> None:
     rec = Recorder()
     logs = await make_deployment(
         rec, run_returncode=0, run_stdout=("hello world",)
@@ -679,7 +704,7 @@ async def test_run_success_returns_stdout_and_zero():
     assert "hello world" in logs.stdout
 
 
-async def test_run_nonzero_raises_with_code_and_stderr():
+async def test_run_nonzero_raises_with_code_and_stderr() -> None:
     rec = Recorder()
     with pytest.raises(CommandError) as excinfo:
         await make_deployment(rec, run_returncode=7, run_stderr=("boom",)).arun(
@@ -689,7 +714,7 @@ async def test_run_nonzero_raises_with_code_and_stderr():
     assert any("boom" in line for line in excinfo.value.stderr)
 
 
-async def test_run_suppress_raise_reports_code():
+async def test_run_suppress_raise_reports_code() -> None:
     rec = Recorder()
     logs = await make_deployment(rec, run_returncode=7).arun(
         "worker", "false", raise_on_error=False
@@ -697,7 +722,7 @@ async def test_run_suppress_raise_reports_code():
     assert logs.returncode == 7
 
 
-async def test_run_expected_nonzero_does_not_raise():
+async def test_run_expected_nonzero_does_not_raise() -> None:
     rec = Recorder()
     logs = await make_deployment(rec, run_returncode=1).arun(
         "worker", "false", expected_exit_code=1
@@ -705,7 +730,7 @@ async def test_run_expected_nonzero_does_not_raise():
     assert logs.returncode == 1
 
 
-async def test_run_wrong_exit_code_raises_with_expectation_note():
+async def test_run_wrong_exit_code_raises_with_expectation_note() -> None:
     rec = Recorder()
     with pytest.raises(CommandError) as excinfo:
         await make_deployment(rec, run_returncode=1).arun(
@@ -717,7 +742,7 @@ async def test_run_wrong_exit_code_raises_with_expectation_note():
 # --------------------------------------------------------------------------- #
 # Sync surface
 # --------------------------------------------------------------------------- #
-def test_sync_context_registers_and_tears_down():
+def test_sync_context_registers_and_tears_down() -> None:
     rec = Recorder()
     with make_deployment(rec) as d:
         d.up(down_on_exit=True)
@@ -737,7 +762,9 @@ UP_PROGRESS = [
 ]
 
 
-def _progress_deployment(rec: Recorder, writer, **kw):
+def _progress_deployment(
+    rec: Recorder, writer: TextIO, **kw: Any
+) -> tuple[Deployment, ProgressLogger]:
     """A Deployment whose logger is a ProgressLogger drawing into ``writer``.
 
     Passing the logger to the constructor (rather than assigning it) is
@@ -754,14 +781,14 @@ def _progress_deployment(rec: Recorder, writer, **kw):
     return Deployment(project=project, logger=logger), logger
 
 
-def test_progress_logger_satisfies_the_logger_protocol():
+def test_progress_logger_satisfies_the_logger_protocol() -> None:
     """A partial implementation would be rejected here."""
     rec = Recorder()
     deployment, logger = _progress_deployment(rec, io.StringIO())
     assert deployment.logger is logger
 
 
-async def test_progress_logger_tracks_a_full_lifecycle():
+async def test_progress_logger_tracks_a_full_lifecycle() -> None:
     rec = Recorder()
     deployment, logger = _progress_deployment(rec, io.StringIO())
 
@@ -779,7 +806,7 @@ async def test_progress_logger_tracks_a_full_lifecycle():
     assert "echo Started" in rendered
 
 
-async def test_progress_logger_draws_in_place_during_up():
+async def test_progress_logger_draws_in_place_during_up() -> None:
     """The whole point: one line, redrawn, never scrolled."""
     rec = Recorder()
     buffer = io.StringIO()
@@ -798,7 +825,7 @@ async def test_progress_logger_draws_in_place_during_up():
     assert written.endswith("\r\x1b[K")
 
 
-async def test_unparseable_stream_lines_are_survivable():
+async def test_unparseable_stream_lines_are_survivable() -> None:
     """The default fake yields prose, not compose progress. It must not crash."""
     rec = Recorder()
     buffer = io.StringIO()
@@ -814,7 +841,7 @@ async def test_unparseable_stream_lines_are_survivable():
     assert "[" not in logger.render()
 
 
-async def test_progress_line_is_erased_when_up_fails():
+async def test_progress_line_is_erased_when_up_fails() -> None:
     """The failure path is what this feature exists for.
 
     A raised `CommandError` must still leave the terminal at column 0 with the
@@ -843,7 +870,7 @@ async def test_progress_line_is_erased_when_up_fails():
     assert "\n" not in written
 
 
-async def test_stop_is_idempotent_after_a_failure():
+async def test_stop_is_idempotent_after_a_failure() -> None:
     """A second stop (e.g. from a nested finally) must not re-erase or hang."""
     rec = Recorder()
     buffer = io.StringIO()
@@ -871,30 +898,30 @@ class SelfRunProject(RecordingProject):
     """A project that starts, stops, downs and pulls its own stack."""
 
     def __init__(
-        self, rec: Recorder, *, refuse_scales: bool = False, **cli_kwargs
+        self, rec: Recorder, *, refuse_scales: bool = False, **cli_kwargs: Any
     ) -> None:
         super().__init__(rec, **cli_kwargs)
         self.refuse_scales = refuse_scales
         self.options: dict[str, object] = {}
 
-    async def astream_up(self, cli, options: UpOptions):
+    async def astream_up(self, cli: CLI, options: UpOptions) -> LogStream:
         if self.refuse_scales and options.scales:
             raise ProjectError("this project cannot scale a service")
         self.rec.add("project_up")
         self.options["up"] = options
         yield ("STDERR", "project up line")
 
-    async def astream_stop(self, cli, timeout):
+    async def astream_stop(self, cli: CLI, timeout: int | None) -> LogStream:
         self.rec.add("project_stop")
         self.options["stop"] = timeout
         yield ("STDOUT", "project stop line")
 
-    async def astream_down(self, cli, options: DownOptions):
+    async def astream_down(self, cli: CLI, options: DownOptions) -> LogStream:
         self.rec.add("project_down")
         self.options["down"] = options
         yield ("STDOUT", "project down line")
 
-    async def astream_pull(self, cli, options: PullOptions):
+    async def astream_pull(self, cli: CLI, options: PullOptions) -> LogStream:
         self.rec.add("project_pull")
         self.options["pull"] = options
         yield ("STDERR", "project pull line")
@@ -903,19 +930,19 @@ class SelfRunProject(RecordingProject):
 class OnlyStartsItself(RecordingProject):
     """A project that takes over ``up`` and leaves the rest to compose."""
 
-    async def astream_up(self, cli, options: UpOptions):
+    async def astream_up(self, cli: CLI, options: UpOptions) -> LogStream:
         self.rec.add("project_up")
         yield ("STDERR", "project up line")
 
 
-def test_a_compose_only_project_owns_no_verb():
+def test_a_compose_only_project_owns_no_verb() -> None:
     project = RecordingProject(Recorder())
     assert not isinstance(
         project, (StartsItself, StopsItself, DownsItself, PullsItself)
     )
 
 
-async def test_project_that_starts_itself_replaces_compose_up():
+async def test_project_that_starts_itself_replaces_compose_up() -> None:
     rec = Recorder()
     project = SelfRunProject(rec)
     async with Deployment(project=project) as d:
@@ -931,7 +958,7 @@ async def test_project_that_starts_itself_replaces_compose_up():
     )
 
 
-async def test_project_lifecycle_runs_pull_stop_and_down_through_the_project():
+async def test_project_lifecycle_runs_pull_stop_and_down_through_the_project() -> None:
     rec = Recorder()
     project = SelfRunProject(rec)
     async with Deployment(
@@ -960,7 +987,7 @@ async def test_project_lifecycle_runs_pull_stop_and_down_through_the_project():
     assert d.stop_logs == ["project stop line"]
 
 
-async def test_project_lifecycle_tears_down_through_the_project_on_exit():
+async def test_project_lifecycle_tears_down_through_the_project_on_exit() -> None:
     rec = Recorder()
     async with Deployment(project=SelfRunProject(rec), policy="testing") as d:
         await d.aup()
@@ -974,7 +1001,9 @@ async def test_project_lifecycle_tears_down_through_the_project_on_exit():
     assert "astream_stop" not in rec.events
 
 
-async def test_project_that_starts_itself_gets_no_owner_labels_but_still_reaps():
+async def test_project_that_starts_itself_gets_no_owner_labels_but_still_reaps() -> (
+    None
+):
     """The labels ride on a compose override this project's ``up`` never reads."""
     rec = Recorder()
     async with Deployment(project=SelfRunProject(rec), policy="testing") as d:
@@ -984,24 +1013,24 @@ async def test_project_that_starts_itself_gets_no_owner_labels_but_still_reaps()
         assert d._cli.compose_files == ["docker-compose.yaml"]
 
 
-async def test_project_lifecycle_feeds_the_logger():
+async def test_project_lifecycle_feeds_the_logger() -> None:
     rec = Recorder()
     seen: list[tuple[str, tuple[str, str]]] = []
 
     class Listening:
-        def on_pull(self, log):
+        def on_pull(self, log: tuple[str, str]) -> None:
             seen.append(("pull", log))
 
-        def on_up(self, log):
+        def on_up(self, log: tuple[str, str]) -> None:
             seen.append(("up", log))
 
-        def on_stop(self, log):
+        def on_stop(self, log: tuple[str, str]) -> None:
             seen.append(("stop", log))
 
-        def on_logs(self, log):
+        def on_logs(self, log: tuple[str, str]) -> None:
             seen.append(("logs", log))
 
-        def on_down(self, log):
+        def on_down(self, log: tuple[str, str]) -> None:
             seen.append(("down", log))
 
     async with Deployment(project=SelfRunProject(rec), logger=Listening()) as d:
@@ -1013,7 +1042,7 @@ async def test_project_lifecycle_feeds_the_logger():
     assert [name for name, _ in seen] == ["pull", "up", "stop", "down"]
 
 
-async def test_project_refusing_an_option_still_has_its_teardown_registered():
+async def test_project_refusing_an_option_still_has_its_teardown_registered() -> None:
     rec = Recorder()
     with pytest.raises(ProjectError):
         async with Deployment(
@@ -1024,7 +1053,7 @@ async def test_project_refusing_an_option_still_has_its_teardown_registered():
     assert "project_down" in rec.events
 
 
-async def test_project_may_own_up_alone():
+async def test_project_may_own_up_alone() -> None:
     rec = Recorder()
     async with Deployment(project=OnlyStartsItself(rec), policy="testing") as d:
         await d.aup()
@@ -1032,7 +1061,7 @@ async def test_project_may_own_up_alone():
     assert rec.count("astream_down") == 1
 
 
-def test_sync_up_goes_through_the_project():
+def test_sync_up_goes_through_the_project() -> None:
     rec = Recorder()
     with Deployment(project=SelfRunProject(rec), policy="testing") as d:
         d.up()

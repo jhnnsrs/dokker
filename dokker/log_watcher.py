@@ -3,7 +3,7 @@ import inspect
 import re
 from collections.abc import Generator
 from types import TracebackType
-from typing import Self
+from typing import TypeVar
 
 from koil import unkoil
 from koil.composition import KoiledModel
@@ -78,6 +78,9 @@ class LogRoll(list[tuple[str, str]]):
         return "\n".join(f"{log}: {text}" for log, text in self)
 
 
+_LogWatcherT = TypeVar("_LogWatcherT", bound="LogWatcher")
+
+
 class LogWatcher(KoiledModel):
     """A class to watch logs from a Docker container."""
 
@@ -148,7 +151,7 @@ class LogWatcher(KoiledModel):
             if self._just_one_log is not None and not self._just_one_log.done():
                 self._just_one_log.set_result(False)
 
-    async def __aenter__(self) -> Self:
+    async def __aenter__(self: _LogWatcherT) -> _LogWatcherT:
         """Asynchronous context manager to enter the log watcher.
 
         When ``wait_for_first_log`` is set, the wait is bounded by

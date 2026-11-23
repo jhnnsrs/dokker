@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from ssl import SSLContext
 from types import TracebackType
-from typing import Any, Literal, Protocol, Self, runtime_checkable
+from typing import Any, Literal, Protocol, TypeVar, runtime_checkable
 
 import aiohttp
 import aiohttp.client_exceptions
@@ -207,6 +207,9 @@ class Logger(Protocol):
     def on_down(self, log: tuple[str, str]) -> None:
         """When the deployment is down, this method is called."""
         ...
+
+
+_DeploymentT = TypeVar("_DeploymentT", bound="Deployment")
 
 
 class Deployment(KoiledModel):
@@ -1794,7 +1797,7 @@ class Deployment(KoiledModel):
         """
         return await self.aretrieve_cli()
 
-    async def __aenter__(self) -> Self:
+    async def __aenter__(self: _DeploymentT) -> _DeploymentT:
         """Async enter method for the deployment.
 
         Entering does nothing on its own: no initialize, inspect, pull, up or

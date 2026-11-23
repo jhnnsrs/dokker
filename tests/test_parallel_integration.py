@@ -26,7 +26,7 @@ def _get(url: str) -> str:
         return response.read().decode()
 
 
-def test_two_identical_stacks_run_side_by_side_on_different_ports():
+def test_two_identical_stacks_run_side_by_side_on_different_ports() -> None:
     """The core parallel-isolation promise, end to end."""
     first = testing(COMPOSE_FILE, health_checks=[TcpCheck(service="echo", port=5678)])
     second = testing(COMPOSE_FILE, health_checks=[TcpCheck(service="echo", port=5678)])
@@ -49,7 +49,7 @@ def test_two_identical_stacks_run_side_by_side_on_different_ports():
         assert "hello from dokker" in _get(second.get_url("echo", 5678))
 
 
-def test_get_url_builds_a_working_url_with_a_path():
+def test_get_url_builds_a_working_url_with_a_path() -> None:
     deployment = testing(COMPOSE_FILE)
     with deployment:
         deployment.up()
@@ -61,7 +61,7 @@ def test_get_url_builds_a_working_url_with_a_path():
         assert "hello from dokker" in _get(url)
 
 
-def test_static_spec_refuses_to_hand_back_an_unresolved_port():
+def test_static_spec_refuses_to_hand_back_an_unresolved_port() -> None:
     """An ephemeral port is absent from `compose config`, and must say so.
 
     Returning the mapping regardless yielded ``published=None``, which formats
@@ -81,7 +81,7 @@ def test_static_spec_refuses_to_hand_back_an_unresolved_port():
         assert "get_port" in str(excinfo.value)
 
 
-def test_ps_reports_running_containers_and_published_ports():
+def test_ps_reports_running_containers_and_published_ports() -> None:
     deployment = testing(COMPOSE_FILE)
     with deployment:
         deployment.up()

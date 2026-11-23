@@ -255,7 +255,8 @@ async def alist_owned_stacks(
             continue
         container_id, project, *values = parts
         labels = {"id": container_id, COMPOSE_PROJECT_LABEL: project}
-        for key, value in zip(OWNER_LABELS, values):
+        # The length check above makes them the same length.
+        for key, value in zip(OWNER_LABELS, values, strict=True):
             if value:
                 labels[key] = value
         stacks.setdefault(project, []).append(labels)
@@ -515,7 +516,7 @@ async def areap_orphan_images(
             ).split()
         )
         orphaned: list[str] = []
-        for tag, detail in zip(tags, details):
+        for tag, detail in zip(tags, details, strict=False):
             tagged, _, labelled = detail.strip().partition("\t")
             named = _TESTING_IMAGE_TAG.match(tag)
             if named is None:

@@ -15,14 +15,14 @@ from dokker import testing as make_testing
 COMPOSE_FILE = "tests/configs/basic-compose.yaml"
 
 
-async def test_local_threads_project_name():
+async def test_local_threads_project_name() -> None:
     deployment = local(COMPOSE_FILE, project_name="explicit-name")
     cli = await deployment.project.ainititialize()
     assert "--project-name" in cli.docker_cmd
     assert cli.docker_cmd[cli.docker_cmd.index("--project-name") + 1] == "explicit-name"
 
 
-async def test_local_without_project_name_derives_a_stable_one():
+async def test_local_without_project_name_derives_a_stable_one() -> None:
     # `basic-compose.yaml` is not one of compose's default file names, so the
     # derived name is `<directory>-<stem>` (see ``derive_project_name``); two
     # ``local()`` deployments of the same file still share it, as they should.
@@ -35,13 +35,13 @@ async def test_local_without_project_name_derives_a_stable_one():
     assert local(COMPOSE_FILE).project.project_name == deployment.project.project_name
 
 
-async def test_monitoring_threads_project_name():
+async def test_monitoring_threads_project_name() -> None:
     deployment = monitoring(COMPOSE_FILE, project_name="mon-name")
     cli = await deployment.project.ainititialize()
     assert cli.docker_cmd[cli.docker_cmd.index("--project-name") + 1] == "mon-name"
 
 
-async def test_testing_defaults_to_unique_random_project_name():
+async def test_testing_defaults_to_unique_random_project_name() -> None:
     # Each ``testing`` deployment gets its own random name so identical compose
     # copies in sibling dirs never tear down each other's containers.
     a = make_testing(COMPOSE_FILE)
@@ -54,13 +54,13 @@ async def test_testing_defaults_to_unique_random_project_name():
     assert name_a != name_b
 
 
-async def test_testing_respects_explicit_project_name():
+async def test_testing_respects_explicit_project_name() -> None:
     deployment = make_testing(COMPOSE_FILE, project_name="pinned")
     cli = await deployment.project.ainititialize()
     assert cli.docker_cmd[cli.docker_cmd.index("--project-name") + 1] == "pinned"
 
 
-def test_testing_orphan_and_volume_removal_configurable():
+def test_testing_orphan_and_volume_removal_configurable() -> None:
     default = make_testing(COMPOSE_FILE)
     assert default.remove_orphans_on_down is True
     assert default.remove_volumes_on_down is True
@@ -70,7 +70,7 @@ def test_testing_orphan_and_volume_removal_configurable():
     assert off.remove_volumes_on_down is False
 
 
-def test_testing_removes_the_images_built_for_its_project():
+def test_testing_removes_the_images_built_for_its_project() -> None:
     """A random project name tags images nothing will ask for again: `down` takes them along."""
     assert make_testing(COMPOSE_FILE).remove_images_on_down == "local"
     assert make_testing(COMPOSE_FILE, remove_images=None).remove_images_on_down is None
@@ -79,19 +79,19 @@ def test_testing_removes_the_images_built_for_its_project():
     )
 
 
-def test_builders_set_their_default_policy():
+def test_builders_set_their_default_policy() -> None:
     assert make_testing(COMPOSE_FILE).policy == "testing"
     assert local(COMPOSE_FILE).policy == "local"
     assert monitoring(COMPOSE_FILE).policy == "monitoring"
 
 
-def test_local_keeps_volumes_and_orphans_by_default():
+def test_local_keeps_volumes_and_orphans_by_default() -> None:
     # A local stack is yours to keep: a `down` must not wipe data by default.
     deployment = local(COMPOSE_FILE)
     assert deployment.remove_volumes_on_down is False
     assert deployment.remove_orphans_on_down is False
 
 
-def test_policy_is_overridable_on_builders():
+def test_policy_is_overridable_on_builders() -> None:
     assert local(COMPOSE_FILE, policy="manual").policy == "manual"
     assert make_testing(COMPOSE_FILE, policy="local").policy == "local"

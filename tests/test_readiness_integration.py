@@ -25,7 +25,7 @@ pytestmark = pytest.mark.integration
 COMPOSE_FILE = "tests/configs/db-compose.yaml"
 
 
-def test_command_check_waits_for_a_database_to_answer():
+def test_command_check_waits_for_a_database_to_answer() -> None:
     """`redis-cli ping` inside the container -- the service's own readiness tool."""
     deployment = testing(
         COMPOSE_FILE,
@@ -37,7 +37,7 @@ def test_command_check_waits_for_a_database_to_answer():
         deployment.check_health()
 
 
-def test_container_check_uses_dockers_own_health_verdict():
+def test_container_check_uses_dockers_own_health_verdict() -> None:
     deployment = testing(COMPOSE_FILE, health_checks=[ContainerCheck(service="redis")])
     with deployment:
         deployment.up(wait=True, wait_timeout=60)
@@ -47,7 +47,7 @@ def test_container_check_uses_dockers_own_health_verdict():
         assert deployment.ps()[0].health == "healthy"
 
 
-def test_tcp_and_log_checks_pass_against_a_started_service():
+def test_tcp_and_log_checks_pass_against_a_started_service() -> None:
     deployment = testing(
         COMPOSE_FILE,
         health_checks=[
@@ -61,7 +61,7 @@ def test_tcp_and_log_checks_pass_against_a_started_service():
         deployment.check_health()
 
 
-def test_up_wait_blocks_until_compose_reports_healthy():
+def test_up_wait_blocks_until_compose_reports_healthy() -> None:
     """`up(wait=True)` is compose's own readiness mechanism, previously unreachable."""
     deployment = testing(COMPOSE_FILE)
     with deployment:
@@ -70,7 +70,7 @@ def test_up_wait_blocks_until_compose_reports_healthy():
         assert deployment.ps()[0].health == "healthy"
 
 
-def test_exec_runs_in_the_already_running_container():
+def test_exec_runs_in_the_already_running_container() -> None:
     """`exec` sees live state; `run` (a fresh container) would not."""
     deployment = testing(
         COMPOSE_FILE,
@@ -87,7 +87,7 @@ def test_exec_runs_in_the_already_running_container():
         assert result.returncode == 0
 
 
-def test_exec_reports_a_failing_command_with_its_exit_code():
+def test_exec_reports_a_failing_command_with_its_exit_code() -> None:
     deployment = testing(COMPOSE_FILE)
     with deployment:
         deployment.up(wait=True, wait_timeout=60)
@@ -104,7 +104,7 @@ def test_exec_reports_a_failing_command_with_its_exit_code():
         assert result.returncode == 4
 
 
-def test_check_health_raises_for_a_service_with_no_registered_check():
+def test_check_health_raises_for_a_service_with_no_registered_check() -> None:
     """An unmatched service name used to gather nothing and report success."""
     from dokker import HealthCheckError
 
@@ -119,7 +119,7 @@ def test_check_health_raises_for_a_service_with_no_registered_check():
         assert "not-covered" in str(excinfo.value)
 
 
-def test_one_shot_logs_returns_what_the_service_has_printed():
+def test_one_shot_logs_returns_what_the_service_has_printed() -> None:
     deployment = testing(COMPOSE_FILE)
     with deployment:
         deployment.up(wait=True, wait_timeout=60)
@@ -128,7 +128,7 @@ def test_one_shot_logs_returns_what_the_service_has_printed():
         assert any("Ready to accept connections" in line for _, line in logs)
 
 
-def test_watcher_await_log_blocks_until_a_matching_line_appears():
+def test_watcher_await_log_blocks_until_a_matching_line_appears() -> None:
     """The documented synchronisation primitive, against a real service."""
     deployment = testing(COMPOSE_FILE)
     with deployment:
@@ -140,7 +140,7 @@ def test_watcher_await_log_blocks_until_a_matching_line_appears():
         assert "Ready to accept connections" in line
 
 
-def test_watcher_on_a_bad_service_terminates_instead_of_hanging():
+def test_watcher_on_a_bad_service_terminates_instead_of_hanging() -> None:
     """A watcher on a nonexistent service must not hang the session.
 
     Compose reports the bad name and exits non-zero. Whether that surfaces as a
@@ -168,7 +168,7 @@ def test_watcher_on_a_bad_service_terminates_instead_of_hanging():
             )
 
 
-def test_watcher_on_a_quiet_service_times_out_rather_than_hanging():
+def test_watcher_on_a_quiet_service_times_out_rather_than_hanging() -> None:
     """A service that has not logged must not block the caller indefinitely."""
     from dokker import LogWatcherTimeoutError
 

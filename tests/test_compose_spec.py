@@ -28,17 +28,17 @@ def _spec() -> ComposeSpec:
     )
 
 
-def test_find_service_by_name():
+def test_find_service_by_name() -> None:
     service = _spec().find_service("web")
     assert service.image == "nginx"
 
 
-def test_find_service_default_returns_first():
+def test_find_service_default_returns_first() -> None:
     service = _spec().find_service()
     assert service.image is not None
 
 
-def test_find_missing_service_raises_with_available_names():
+def test_find_missing_service_raises_with_available_names() -> None:
     with pytest.raises(ServiceNotFoundError) as excinfo:
         _spec().find_service("does-not-exist")
     message = str(excinfo.value)
@@ -46,17 +46,17 @@ def test_find_missing_service_raises_with_available_names():
     assert "web" in message and "db" in message
 
 
-def test_find_service_on_empty_spec_raises():
+def test_find_service_on_empty_spec_raises() -> None:
     with pytest.raises(ServiceNotFoundError):
         ComposeSpec(services={}).find_service("web")
 
 
-def test_get_port_for_internal():
+def test_get_port_for_internal() -> None:
     port = _spec().find_service("web").get_port_for_internal(80)
     assert port.published == 8080
 
 
-def test_get_port_for_internal_missing_lists_available_ports():
+def test_get_port_for_internal_missing_lists_available_ports() -> None:
     with pytest.raises(PortNotFoundError) as excinfo:
         _spec().find_service("web").get_port_for_internal(443)
     message = str(excinfo.value)
@@ -64,21 +64,21 @@ def test_get_port_for_internal_missing_lists_available_ports():
     assert "80" in message
 
 
-def test_get_port_for_internal_no_ports():
+def test_get_port_for_internal_no_ports() -> None:
     with pytest.raises(PortNotFoundError):
         _spec().find_service("db").get_port_for_internal(80)
 
 
-def test_get_label():
+def test_get_label() -> None:
     assert _spec().find_service("web").get_label("role") == "frontend"
 
 
-def test_get_label_missing_lists_available_labels():
+def test_get_label_missing_lists_available_labels() -> None:
     with pytest.raises(LabelNotFoundError) as excinfo:
         _spec().find_service("web").get_label("missing")
     assert "role" in str(excinfo.value)
 
 
-def test_get_label_no_labels():
+def test_get_label_no_labels() -> None:
     with pytest.raises(LabelNotFoundError):
         _spec().find_service("db").get_label("role")

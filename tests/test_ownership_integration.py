@@ -105,7 +105,7 @@ def _strand(project: str) -> int:
     return proc.pid
 
 
-def test_a_testing_stack_carries_its_owners_pid():
+def test_a_testing_stack_carries_its_owners_pid() -> None:
     project = _unique("dokker-own")
     try:
         with make_testing(COMPOSE, project_name=project, shutdown_timeout=1) as d:
@@ -118,7 +118,7 @@ def test_a_testing_stack_carries_its_owners_pid():
         _force_down(project)
 
 
-def test_a_kept_stack_carries_no_owner_label():
+def test_a_kept_stack_carries_no_owner_label() -> None:
     """``down_on_exit=False`` (what ``--dokker-keep`` passes) opts out of reaping entirely."""
     project = _unique("dokker-keep")
     try:
@@ -135,7 +135,7 @@ def test_a_kept_stack_carries_no_owner_label():
         _force_down(project)
 
 
-def test_stranded_stack_is_reaped_by_the_next_up():
+def test_stranded_stack_is_reaped_by_the_next_up() -> None:
     stranded = _unique("dokker-stray")
     live = _unique("dokker-live")
     try:
@@ -153,7 +153,7 @@ def test_stranded_stack_is_reaped_by_the_next_up():
         _force_down(live)
 
 
-def test_a_live_owners_stack_survives_another_up_and_an_explicit_reap():
+def test_a_live_owners_stack_survives_another_up_and_an_explicit_reap() -> None:
     first = _unique("dokker-first")
     second = _unique("dokker-second")
     try:
@@ -171,7 +171,7 @@ def test_a_live_owners_stack_survives_another_up_and_an_explicit_reap():
         _force_down(second)
 
 
-def test_reap_stale_returns_the_projects_it_removed():
+def test_reap_stale_returns_the_projects_it_removed() -> None:
     stranded = _unique("dokker-stray")
     try:
         _strand(stranded)
@@ -182,7 +182,7 @@ def test_reap_stale_returns_the_projects_it_removed():
         _force_down(stranded)
 
 
-def test_reap_stale_false_leaves_strays_alone():
+def test_reap_stale_false_leaves_strays_alone() -> None:
     stranded = _unique("dokker-stray")
     live = _unique("dokker-live")
     try:

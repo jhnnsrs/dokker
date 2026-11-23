@@ -24,13 +24,13 @@ def _sample_roll() -> LogRoll:
     return roll
 
 
-def test_stdout_only_contains_stdout():
+def test_stdout_only_contains_stdout() -> None:
     roll = _sample_roll()
     assert roll.stdout_list == ["starting up", "done"]
     assert roll.stdout == "starting up\ndone"
 
 
-def test_stderr_only_contains_stderr():
+def test_stderr_only_contains_stderr() -> None:
     roll = _sample_roll()
     # Regression test: stderr_gen used to filter on "STDOUT", so stderr
     # silently returned stdout and container errors were invisible.
@@ -38,12 +38,12 @@ def test_stderr_only_contains_stderr():
     assert roll.stderr == "something broke"
 
 
-def test_stdout_and_stderr_are_disjoint():
+def test_stdout_and_stderr_are_disjoint() -> None:
     roll = _sample_roll()
     assert set(roll.stdout_list).isdisjoint(roll.stderr_list)
 
 
-def test_empty_roll():
+def test_empty_roll() -> None:
     roll = LogRoll()
     assert roll.stdout == ""
     assert roll.stderr == ""
@@ -51,7 +51,7 @@ def test_empty_roll():
     assert roll.stderr_list == []
 
 
-def test_format_log_watcher_message_includes_services_and_logs():
+def test_format_log_watcher_message_includes_services_and_logs() -> None:
     watcher = LogWatcher(
         cli_bearer=_DummyBearer(), services=["mikro"], capture_stdout=True
     )
@@ -64,7 +64,7 @@ def test_format_log_watcher_message_includes_services_and_logs():
     assert "something broke" in message
 
 
-def test_format_log_watcher_message_respects_capture_stdout_false():
+def test_format_log_watcher_message_respects_capture_stdout_false() -> None:
     watcher = LogWatcher(
         cli_bearer=_DummyBearer(), services=["mikro"], capture_stdout=False
     )

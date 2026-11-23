@@ -93,7 +93,7 @@ def _probe_docker() -> bool:
 DOKKER_FIXTURES = frozenset({"dokker_deployment", "docker_available", "dokker_keep"})
 
 
-def _supports_ansi(stream: Any) -> bool:
+def _supports_ansi(stream: object) -> bool:
     """Whether in-place redrawing will actually look like anything on `stream`.
 
     A pipe or a file gets no progress line: the carriage returns would be
@@ -102,7 +102,8 @@ def _supports_ansi(stream: Any) -> bool:
     signal that VT sequences are processed.
     """
     try:
-        if not stream.isatty():
+        # Anything may be handed in: one without isatty() is caught below.
+        if not stream.isatty():  # pyright: ignore[reportAttributeAccessIssue]
             return False
     except (AttributeError, ValueError):
         return False

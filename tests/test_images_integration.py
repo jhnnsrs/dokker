@@ -88,7 +88,9 @@ def _cleanup(project: str) -> None:
         )
 
 
-def test_down_removes_the_image_built_for_the_project_and_keeps_the_pulled_one():
+def test_down_removes_the_image_built_for_the_project_and_keeps_the_pulled_one() -> (
+    None
+):
     project = _unique("dokker-img")
     try:
         with make_testing(COMPOSE, project_name=project, shutdown_timeout=1) as d:
@@ -102,7 +104,7 @@ def test_down_removes_the_image_built_for_the_project_and_keeps_the_pulled_one()
         _cleanup(project)
 
 
-def test_images_are_kept_when_asked():
+def test_images_are_kept_when_asked() -> None:
     project = _unique("dokker-img")
     try:
         with make_testing(
@@ -114,7 +116,7 @@ def test_images_are_kept_when_asked():
         _cleanup(project)
 
 
-def test_a_stranded_stacks_image_is_reaped_with_it():
+def test_a_stranded_stacks_image_is_reaped_with_it() -> None:
     project = _unique("dokker-img-stray")
     try:
         code = STRAND_SCRIPT.format(compose=COMPOSE, project=project)
@@ -130,7 +132,7 @@ def test_a_stranded_stacks_image_is_reaped_with_it():
         _cleanup(project)
 
 
-def test_images_earlier_testing_stacks_left_behind_are_swept():
+def test_images_earlier_testing_stacks_left_behind_are_swept() -> None:
     """What a run from before `down` removed images left: a tag with no stack behind it."""
     project = f"dokker-test-{uuid.uuid4().hex[:8]}"
     kept = _unique("dokker-img-other")

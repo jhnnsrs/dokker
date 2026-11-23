@@ -15,51 +15,51 @@ from dokker.pytest_plugin import _progress_enabled, _supports_ansi
 class FakeConfig:
     """Just enough of `pytest.Config` for the option-resolution helpers."""
 
-    def __init__(self, **options):
+    def __init__(self, **options: object) -> None:
         self._options = {"--dokker-progress": "auto", "--dokker-log": False, **options}
 
-    def getoption(self, name, default=None):
+    def getoption(self, name: str, default: object = None) -> object:
         return self._options.get(name, default)
 
 
 class Tty(io.StringIO):
-    def isatty(self):
+    def isatty(self) -> bool:
         return True
 
 
 class NotTty(io.StringIO):
-    def isatty(self):
+    def isatty(self) -> bool:
         return False
 
 
 # ------------------------------------------------------------------ ansi
 
 
-def test_a_pipe_gets_no_progress_line():
+def test_a_pipe_gets_no_progress_line() -> None:
     """Carriage returns written into a pipe are litter, not a display."""
     assert _supports_ansi(NotTty()) is False
 
 
-def test_a_terminal_gets_a_progress_line(monkeypatch):
+def test_a_terminal_gets_a_progress_line(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.platform", "linux")
     monkeypatch.delenv("TERM", raising=False)
     assert _supports_ansi(Tty()) is True
 
 
-def test_dumb_terminals_are_excluded(monkeypatch):
+def test_dumb_terminals_are_excluded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.platform", "linux")
     monkeypatch.setenv("TERM", "dumb")
     assert _supports_ansi(Tty()) is False
 
 
-def test_a_stream_without_isatty_is_not_a_terminal():
+def test_a_stream_without_isatty_is_not_a_terminal() -> None:
     class Bare:
         pass
 
     assert _supports_ansi(Bare()) is False
 
 
-def test_legacy_windows_console_is_excluded(monkeypatch):
+def test_legacy_windows_console_is_excluded(monkeypatch: pytest.MonkeyPatch) -> None:
     """`cmd.exe` claims isatty() but renders \\x1b[K as literal garbage."""
     monkeypatch.setattr("sys.platform", "win32")
     for var in ("WT_SESSION", "ANSICON", "TERM"):
@@ -73,17 +73,19 @@ def test_legacy_windows_console_is_excluded(monkeypatch):
 # ------------------------------------------------------------------ resolution
 
 
-def test_off_disables_progress_even_on_a_terminal(monkeypatch):
+def test_off_disables_progress_even_on_a_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr("sys.stdout", Tty())
     assert _progress_enabled(FakeConfig(**{"--dokker-progress": "off"})) is False
 
 
-def test_on_forces_progress_even_when_piped(monkeypatch):
+def test_on_forces_progress_even_when_piped(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.stdout", NotTty())
     assert _progress_enabled(FakeConfig(**{"--dokker-progress": "on"})) is True
 
 
-def test_auto_follows_the_terminal(monkeypatch):
+def test_auto_follows_the_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.platform", "linux")
     monkeypatch.delenv("TERM", raising=False)
 
@@ -94,7 +96,7 @@ def test_auto_follows_the_terminal(monkeypatch):
     assert _progress_enabled(FakeConfig()) is True
 
 
-def test_dokker_log_wins_over_progress(monkeypatch):
+def test_dokker_log_wins_over_progress(monkeypatch: pytest.MonkeyPatch) -> None:
     """Raw log output would scroll a self-erasing line away every frame."""
     monkeypatch.setattr("sys.stdout", Tty())
     config = FakeConfig(**{"--dokker-progress": "on", "--dokker-log": True})
@@ -104,7 +106,7 @@ def test_dokker_log_wins_over_progress(monkeypatch):
 # ------------------------------------------------------------------ registration
 
 
-def test_flag_is_registered_via_the_entry_point(pytester: pytest.Pytester):
+def test_flag_is_registered_via_the_entry_point(pytester: pytest.Pytester) -> None:
     """A downstream project gets the flag purely by installing dokker."""
     pytester.makepyfile(
         """
@@ -116,7 +118,7 @@ def test_flag_is_registered_via_the_entry_point(pytester: pytest.Pytester):
     result.assert_outcomes(passed=1)
 
 
-def test_progress_defaults_to_auto(pytester: pytest.Pytester):
+def test_progress_defaults_to_auto(pytester: pytest.Pytester) -> None:
     pytester.makepyfile(
         """
         def test_option(request):
@@ -127,12 +129,12 @@ def test_progress_defaults_to_auto(pytester: pytest.Pytester):
     result.assert_outcomes(passed=1)
 
 
-def test_invalid_progress_value_is_rejected(pytester: pytest.Pytester):
+def test_invalid_progress_value_is_rejected(pytester: pytest.Pytester) -> None:
     pytester.makepyfile("def test_noop(): pass")
     result = pytester.runpytest_subprocess("--dokker-progress=maybe")
     assert result.ret != 0
 
 
-def test_help_lists_the_dokker_group(pytester: pytest.Pytester):
+def test_help_lists_the_dokker_group(pytester: pytest.Pytester) -> None:
     result = pytester.runpytest_subprocess("--help")
     result.stdout.fnmatch_lines(["*--dokker-progress*"])

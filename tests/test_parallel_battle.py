@@ -24,7 +24,15 @@ import uuid
 
 import pytest
 
-from dokker import DokkerError, ProjectError, TcpCheck, local, mirror, testing
+from dokker import (
+    Deployment,
+    DokkerError,
+    ProjectError,
+    TcpCheck,
+    local,
+    mirror,
+    testing,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -45,7 +53,7 @@ def _echo_check() -> TcpCheck:
     return TcpCheck(service="echo", port=5678)
 
 
-def _force_down(deployment) -> None:
+def _force_down(deployment: Deployment) -> None:
     """Tear a deployment all the way down, ignoring anything that goes wrong.
 
     Used in ``finally`` blocks. ``local()``'s policy only *stops* containers on
@@ -58,7 +66,7 @@ def _force_down(deployment) -> None:
         pass
 
 
-def test_two_local_deployments_in_one_directory_do_not_merge():
+def test_two_local_deployments_in_one_directory_do_not_merge() -> None:
     """``local()`` deployments of sibling compose files must stay separate.
 
     ``local()`` leaves ``project_name`` unset, so dokker emits no
@@ -94,7 +102,7 @@ def test_two_local_deployments_in_one_directory_do_not_merge():
         _force_down(second)
 
 
-async def test_five_stacks_come_up_concurrently_on_distinct_ports():
+async def test_five_stacks_come_up_concurrently_on_distinct_ports() -> None:
     """Five identical stacks brought up in one ``gather`` must not overlap.
 
     The sequential case is already covered; this is the one where a port
@@ -127,7 +135,7 @@ async def test_five_stacks_come_up_concurrently_on_distinct_ports():
         assert all("hello from dokker" in body for body in bodies)
 
 
-def test_downing_one_stack_leaves_its_neighbour_serving():
+def test_downing_one_stack_leaves_its_neighbour_serving() -> None:
     """Tearing down one deployment must not disturb a sibling.
 
     Shared networks and the log watcher are both process-wide enough to get
@@ -152,7 +160,7 @@ def test_downing_one_stack_leaves_its_neighbour_serving():
         assert "hello from dokker" in _get(f"http://localhost:{second_port}")
 
 
-async def test_two_mirrors_of_one_source_refuse_to_share_a_project_dir():
+async def test_two_mirrors_of_one_source_refuse_to_share_a_project_dir() -> None:
     """``mirror()`` must not let a second deployment adopt the first's copy.
 
     ``CopyPathProject`` copies the source into ``.dokker/<project_name>``, and
@@ -170,7 +178,7 @@ async def test_two_mirrors_of_one_source_refuse_to_share_a_project_dir():
     try:
         async with first:
             await first.ainitialize()
-            assert os.path.isdir(project_dir)
+            assert os.path.isdir(project_dir)  # noqa: ASYNC240 - asserting on a file the code under test wrote
 
             async with second:
                 with pytest.raises(ProjectError) as excinfo:
@@ -181,14 +189,14 @@ async def test_two_mirrors_of_one_source_refuse_to_share_a_project_dir():
             assert "overwrite" in message or "project_name" in message
 
             # The refusal must leave the first deployment's copy intact.
-            assert os.path.isdir(project_dir)
+            assert os.path.isdir(project_dir)  # noqa: ASYNC240 - asserting on a file the code under test wrote
     finally:
         # Only ever remove the uniquely-named directory this test created --
         # `.dokker/echo` and `.dokker/paper` are tracked in git.
         shutil.rmtree(project_dir, ignore_errors=True)
 
 
-def test_fixed_host_port_collision_reports_a_legible_error():
+def test_fixed_host_port_collision_reports_a_legible_error() -> None:
     """A pinned host port must fail loudly, naming the port that is taken.
 
     This is the one case dokker genuinely cannot isolate: if the compose file

@@ -8,7 +8,7 @@ COMPOSE_FILE = "tests/configs/lifecycle-compose.yaml"
 
 
 @pytest.mark.integration
-def test_up_down():
+def test_up_down() -> None:
     with local(
         COMPOSE_FILE,
         health_checks=[HealthCheck(url="http://localhost:5679", service="echo")],
@@ -23,7 +23,7 @@ def test_up_down():
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_up_down_async():
+async def test_up_down_async() -> None:
     async with local(
         COMPOSE_FILE,
         health_checks=[HealthCheck(url="http://localhost:5679", service="echo")],

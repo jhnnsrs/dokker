@@ -11,6 +11,7 @@ import socket
 import subprocess
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -35,7 +36,7 @@ def _dead_pid() -> int:
     return proc.pid
 
 
-def test_owner_labels_name_this_process():
+def test_owner_labels_name_this_process() -> None:
     labels = owner_labels()
     assert labels[OWNER_PID_LABEL] == str(os.getpid())
     assert labels[OWNER_HOST_LABEL] == socket.gethostname()
@@ -44,22 +45,22 @@ def test_owner_labels_name_this_process():
         assert labels[OWNER_START_LABEL] == process_start_marker(os.getpid())
 
 
-def test_live_owner_is_alive():
+def test_live_owner_is_alive() -> None:
     assert is_owner_alive(owner_labels()) is True
 
 
-def test_dead_owner_is_not_alive():
+def test_dead_owner_is_not_alive() -> None:
     assert is_owner_alive(owner_labels(pid=_dead_pid())) is False
 
 
-def test_owner_on_another_host_is_left_alone():
+def test_owner_on_another_host_is_left_alone() -> None:
     """A PID number means nothing across hosts, so a foreign stack is never stale."""
     assert (
         is_owner_alive(owner_labels(pid=_dead_pid(), hostname="somewhere-else")) is True
     )
 
 
-def test_unparsable_or_missing_owner_is_left_alone():
+def test_unparsable_or_missing_owner_is_left_alone() -> None:
     host = socket.gethostname()
     assert is_owner_alive({OWNER_HOST_LABEL: host}) is True
     assert (
@@ -68,7 +69,7 @@ def test_unparsable_or_missing_owner_is_left_alone():
     assert is_owner_alive({OWNER_HOST_LABEL: host, OWNER_PID_LABEL: "0"}) is True
 
 
-def test_recycled_pid_counts_as_dead():
+def test_recycled_pid_counts_as_dead() -> None:
     """Same PID, different start marker: a younger process inherited the number."""
     if not sys.platform.startswith("linux"):
         return
@@ -77,7 +78,7 @@ def test_recycled_pid_counts_as_dead():
     assert is_owner_alive(labels) is False
 
 
-def test_stale_projects_requires_every_owner_dead():
+def test_stale_projects_requires_every_owner_dead() -> None:
     host = socket.gethostname()
     dead = {OWNER_HOST_LABEL: host, OWNER_PID_LABEL: str(_dead_pid())}
     live = {OWNER_HOST_LABEL: host, OWNER_PID_LABEL: str(os.getpid())}
@@ -90,7 +91,7 @@ def test_stale_projects_requires_every_owner_dead():
     assert stale_projects(stacks, hostname=host) == ["gone"]
 
 
-def test_override_labels_exactly_the_given_services(tmp_path):
+def test_override_labels_exactly_the_given_services(tmp_path: Path) -> None:
     labels = {OWNER_PID_LABEL: "4242", OWNER_HOST_LABEL: "box"}
     path = write_owner_override(["db", "1.0"], str(tmp_path), labels=labels)
     text = open(path, encoding="utf-8").read()
@@ -102,14 +103,14 @@ def test_override_labels_exactly_the_given_services(tmp_path):
     assert COMPOSE_PROJECT_LABEL not in text  # compose sets that one itself
 
 
-def test_override_for_no_services_is_still_valid_yaml(tmp_path):
+def test_override_for_no_services_is_still_valid_yaml(tmp_path: Path) -> None:
     path = write_owner_override(
         [], str(tmp_path), labels={OWNER_PID_LABEL: "1", OWNER_HOST_LABEL: "box"}
     )
     assert open(path, encoding="utf-8").read().rstrip().endswith("services:\n  {}")
 
 
-def test_an_images_tag_age_is_read_from_dockers_timestamp():
+def test_an_images_tag_age_is_read_from_dockers_timestamp() -> None:
     now = datetime(2026, 10, 2, 12, 0, 0, tzinfo=UTC)
     # As `docker image inspect --format '{{json .Metadata.LastTagTime}}'` prints it.
     assert _tagged_seconds_ago(
